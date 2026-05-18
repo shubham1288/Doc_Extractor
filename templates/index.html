@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document Extractor - OCR Tool</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+
+    <!-- Loading Spinner Overlay -->
+    <div class="spinner-overlay" id="spinnerOverlay">
+        <div class="spinner"></div>
+        <p class="spinner-text">Extracting text from document...</p>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <i class="fas fa-check-circle"></i>
+        <span id="toastMessage">Copied to clipboard!</span>
+    </div>
+
+    <!-- Header -->
+    <header class="header">
+        <h1><i class="fas fa-file-alt"></i> Document Extractor</h1>
+        <p>Upload document images and extract text using OCR</p>
+    </header>
+
+    <!-- Main Content -->
+    <div class="main-container">
+        <div class="row g-4">
+
+            <!-- Left Column: Upload Section -->
+            <div class="col-lg-5">
+                <!-- Upload Card -->
+                <div class="card">
+                    <div class="card-title">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        Upload Document
+                    </div>
+
+                    <!-- Drag & Drop Upload Area -->
+                    <div class="upload-area" id="uploadArea">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>Drag & Drop your document here</h3>
+                        <p>or click to browse files</p>
+                        <p class="file-types">Supported: JPG, JPEG, PNG, PDF (Max 16MB)</p>
+                        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf">
+                    </div>
+
+                    <!-- File Preview -->
+                    <div class="file-preview" id="filePreview">
+                        <img id="previewImage" src="" alt="Preview">
+                        <div class="file-info">
+                            <div class="filename" id="fileName"></div>
+                            <div class="filesize" id="fileSize"></div>
+                        </div>
+                        <button class="btn-secondary" onclick="removeFile()" title="Remove file">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+
+                    <!-- Extract Button -->
+                    <button class="btn-extract" id="extractBtn" onclick="extractText()" disabled>
+                        <i class="fas fa-magic"></i>
+                        Extract Text
+                    </button>
+                </div>
+
+            <!-- Right Column: Results Section -->
+            <div class="col-lg-7">
+                <!-- Alert Messages -->
+                <div class="alert alert-error" id="errorAlert">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span id="errorMessage"></span>
+                </div>
+
+                <div class="alert alert-success" id="successAlert">
+                    <i class="fas fa-check-circle"></i>
+                    <span id="successMessage"></span>
+                </div>
+
+                <!-- Extracted Fields Card -->
+                <div class="card results-section" id="fieldsCard">
+                    <div class="card-title">
+                        <i class="fas fa-id-card"></i>
+                        Extracted Fields
+                    </div>
+                    <div class="fields-container" id="fieldsContainer">
+                        <!-- Fields will be populated dynamically -->
+                    </div>
+                </div>
+
+                <!-- Full Text Card -->
+                <div class="card results-section" id="textCard">
+                    <div class="card-title">
+                        <i class="fas fa-align-left"></i>
+                        Extracted Text
+                    </div>
+                    <textarea class="text-output" id="extractedText" readonly
+                        placeholder="Extracted text will appear here..."></textarea>
+
+                    <!-- Action Buttons -->
+                    <div class="action-buttons">
+                        <button class="btn-secondary" onclick="copyText()">
+                            <i class="fas fa-copy"></i>
+                            Copy Text
+                        </button>
+                        <button class="btn-secondary" id="downloadBtn" onclick="downloadText()">
+                            <i class="fas fa-download"></i>
+                            Download .txt
+                        </button>
+                        <button class="btn-secondary" onclick="clearResults()">
+                            <i class="fas fa-trash-alt"></i>
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>Document Extractor &copy; 2026 | Built with FastAPI, OpenCV & Tesseract OCR</p>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script>
+        // ============================================================
+        // DOM Elements
+        // ============================================================
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const filePreview = document.getElementById('filePreview');
+        const previewImage = document.getElementById('previewImage');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const extractBtn = document.getElementById('extractBtn');
+        const spinnerOverlay = document.getElementById('spinnerOverlay');
+        const errorAlert = document.getElementById('errorAlert');
+        const successAlert = document.getElementById('successAlert');
+        const fieldsCard = document.getElementById('fieldsCard');
+        const textCard = document.getElementById('textCard');
+
+        let selectedFile = null;
+        let outputFilename = null;
+
+        // ============================================================
+        // Drag & Drop Handlers
+        // ============================================================
+
+        // Prevent default drag behaviors
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        // Highlight drop area on drag
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => {
+                uploadArea.classList.remove('dragover');
+            });
+        });
+
+        // Handle dropped files
+        uploadArea.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        // Click to upload
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+
+        // ============================================================
+        // File Handling
+        // ============================================================
+
+        function handleFile(file) {
+            // Validate file type
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+            if (!allowedTypes.includes(file.type)) {
+                showError('Invalid file type. Only JPG, JPEG, PNG, and PDF files are allowed.');
+                return;
+            }
+
+            // Validate file size (16MB max)
+            if (file.size > 16 * 1024 * 1024) {
+                showError('File is too large. Maximum size is 16MB.');
+                return;
+            }
+
+            selectedFile = file;
+
+            // Show file preview
+            if (file.type === 'application/pdf') {
+                previewImage.src = 'https://cdn-icons-png.flaticon.com/512/337/337946.png';
+            } else {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            fileName.textContent = file.name;
+            fileSize.textContent = formatFileSize(file.size);
+            filePreview.classList.add('active');
+            extractBtn.disabled = false;
+
+            // Hide any previous alerts
+            hideAlerts();
+        }
+
+        function removeFile() {
+            selectedFile = null;
+            fileInput.value = '';
+            filePreview.classList.remove('active');
+            extractBtn.disabled = true;
+            previewImage.src = '';
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // ============================================================
+        // OCR Extraction
+        // ============================================================
+
+        function extractText() {
+            if (!selectedFile) {
+                showError('Please select a file first.');
+                return;
+            }
+
+            // Show loading spinner
+            spinnerOverlay.classList.add('active');
+            hideAlerts();
+            extractBtn.disabled = true;
+
+            // Create form data
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            // Send to server
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                spinnerOverlay.classList.remove('active');
+                extractBtn.disabled = false;
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                // Show success
+                showSuccess('Text extracted successfully!');
+
+                // Display results
+                displayResults(data);
+            })
+            .catch(error => {
+                spinnerOverlay.classList.remove('active');
+                extractBtn.disabled = false;
+                showError('Network error. Please check your connection and try again.');
+                console.error('Error:', error);
+            });
+        }
+
+        // ============================================================
+        // Display Results
+        // ============================================================
+
+        function displayResults(data) {
+            // Show extracted text
+            document.getElementById('extractedText').value = data.text;
+            textCard.classList.add('active');
+
+            // Show extracted fields
+            const fieldsContainer = document.getElementById('fieldsContainer');
+            fieldsContainer.innerHTML = '';
+
+            if (data.fields && Object.keys(data.fields).length > 0) {
+                for (const [key, value] of Object.entries(data.fields)) {
+                    const fieldItem = document.createElement('div');
+                    fieldItem.className = 'field-item';
+                    fieldItem.innerHTML = `
+                        <div class="field-label">${key}</div>
+                        <div class="field-value">${value}</div>
+                    `;
+                    fieldsContainer.appendChild(fieldItem);
+                }
+                fieldsCard.classList.add('active');
+            } else {
+                fieldsCard.classList.remove('active');
+            }
+
+            // Show uploaded image
+            outputFilename = data.output_file;
+        }
+
+        // ============================================================
+        // Action Buttons
+        // ============================================================
+
+        function copyText() {
+            const textArea = document.getElementById('extractedText');
+            const text = textArea.value;
+
+            if (!text) {
+                showError('No text to copy.');
+                return;
+            }
+
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Copied to clipboard!');
+            }).catch(() => {
+                // Fallback for older browsers
+                textArea.select();
+                document.execCommand('copy');
+                showToast('Copied to clipboard!');
+            });
+        }
+
+        function downloadText() {
+            if (!outputFilename) {
+                showError('No file available for download.');
+                return;
+            }
+            window.location.href = `/download/${outputFilename}`;
+        }
+
+        function clearResults() {
+            document.getElementById('extractedText').value = '';
+            document.getElementById('fieldsContainer').innerHTML = '';
+            fieldsCard.classList.remove('active');
+            textCard.classList.remove('active');
+            hideAlerts();
+            removeFile();
+            outputFilename = null;
+        }
+
+        // ============================================================
+        // Alerts & Notifications
+        // ============================================================
+
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            errorAlert.classList.add('active');
+            successAlert.classList.remove('active');
+        }
+
+        function showSuccess(message) {
+            document.getElementById('successMessage').textContent = message;
+            successAlert.classList.add('active');
+            errorAlert.classList.remove('active');
+        }
+
+        function hideAlerts() {
+            errorAlert.classList.remove('active');
+            successAlert.classList.remove('active');
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMessage').textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
