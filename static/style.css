@@ -415,6 +415,12 @@ body {
     margin-top: 2rem;
 }
 
+/* Sticky Upload Section */
+.sticky-upload {
+    position: sticky;
+    top: 1.5rem;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
     .main-container {
