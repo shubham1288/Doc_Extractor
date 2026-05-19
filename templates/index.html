@@ -45,19 +45,6 @@
                         Upload Document
                     </div>
 
-                    <!-- Language Selector -->
-                    <div class="language-selector">
-                        <label for="langSelect"><i class="fas fa-language"></i> OCR Language</label>
-                        <select id="langSelect" class="lang-select">
-                            <option value="eng+hin+tel">All (English + Hindi + Telugu)</option>
-                            <option value="eng">English Only</option>
-                            <option value="hin">Hindi Only</option>
-                            <option value="tel">Telugu Only</option>
-                            <option value="eng+hin">English + Hindi</option>
-                            <option value="eng+tel">English + Telugu</option>
-                        </select>
-                    </div>
-
                     <!-- Drag & Drop Upload Area -->
                     <div class="upload-area" id="uploadArea">
                         <i class="fas fa-cloud-upload-alt"></i>
@@ -118,6 +105,15 @@
                         <i class="fas fa-align-left"></i>
                         Extracted Text
                     </div>
+
+                    <!-- Language Filter (shows only detected languages) -->
+                    <div class="language-filter" id="languageFilter">
+                        <label><i class="fas fa-language"></i> Filter by Language</label>
+                        <div class="lang-tabs" id="langTabs">
+                            <!-- Tabs populated dynamically -->
+                        </div>
+                    </div>
+
                     <textarea class="text-output" id="extractedText" readonly
                         placeholder="Extracted text will appear here..."></textarea>
 
@@ -295,7 +291,6 @@
 
             const formData = new FormData();
             formData.append('file', selectedFile);
-            formData.append('language', document.getElementById('langSelect').value);
 
             fetch('/upload', {
                 method: 'POST',
@@ -326,9 +321,18 @@
         // Display Results
         // ============================================================
 
+        // Store all text data for language filtering
+        let allExtractedText = '';
+        let textByLanguage = {};
+
         function displayResults(data) {
+            allExtractedText = data.text;
             document.getElementById('extractedText').value = data.text;
             textCard.classList.add('active');
+
+            // Detect languages and build filter tabs
+            textByLanguage = detectLanguages(data.text);
+            buildLanguageTabs(textByLanguage);
 
             const fieldsContainer = document.getElementById('fieldsContainer');
             fieldsContainer.innerHTML = '';
@@ -353,6 +357,75 @@
             }
 
             outputFilename = data.output_file;
+        }
+
+        // Detect which languages are present in the extracted text
+        function detectLanguages(text) {
+            const languages = {};
+
+            // Telugu Unicode range
+            const teluguLines = text.split('\n').filter(l => /[\u0C00-\u0C7F]/.test(l));
+            if (teluguLines.length > 0) {
+                languages['Telugu'] = teluguLines;
+            }
+
+            // Hindi/Devanagari Unicode range
+            const hindiLines = text.split('\n').filter(l => /[\u0900-\u097F]/.test(l));
+            if (hindiLines.length > 0) {
+                languages['Hindi'] = hindiLines;
+            }
+
+            // English (Latin characters, excluding lines that are purely non-Latin)
+            const englishLines = text.split('\n').filter(l => /[A-Za-z]/.test(l) && !/[\u0C00-\u0C7F]/.test(l) && !/[\u0900-\u097F]/.test(l));
+            if (englishLines.length > 0) {
+                languages['English'] = englishLines;
+            }
+
+            return languages;
+        }
+
+        // Build language filter tabs (only shows detected languages)
+        function buildLanguageTabs(languages) {
+            const langTabs = document.getElementById('langTabs');
+            const langFilter = document.getElementById('languageFilter');
+            langTabs.innerHTML = '';
+
+            const langKeys = Object.keys(languages);
+
+            // Hide filter if only one language detected
+            if (langKeys.length <= 1) {
+                langFilter.style.display = 'none';
+                return;
+            }
+
+            langFilter.style.display = 'block';
+
+            // "All" tab
+            const allTab = document.createElement('button');
+            allTab.className = 'lang-tab active';
+            allTab.textContent = 'All';
+            allTab.onclick = () => {
+                document.getElementById('extractedText').value = allExtractedText;
+                setActiveTab(allTab);
+            };
+            langTabs.appendChild(allTab);
+
+            // Tab for each detected language
+            langKeys.forEach(lang => {
+                const tab = document.createElement('button');
+                tab.className = 'lang-tab';
+                tab.textContent = lang;
+                tab.onclick = () => {
+                    document.getElementById('extractedText').value = languages[lang].join('\n').trim();
+                    setActiveTab(tab);
+                };
+                langTabs.appendChild(tab);
+            });
+        }
+
+        function setActiveTab(activeTab) {
+            document.querySelectorAll('.lang-tab').forEach(t => t.classList.remove('active'));
+            activeTab.classList.add('active');
         }
 
         // ============================================================

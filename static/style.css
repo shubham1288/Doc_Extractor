@@ -326,7 +326,56 @@ body {
     line-height: 1.5;
 }
 
-/* Language Selector */
+/* Language Filter (appears after extraction) */
+.language-filter {
+    display: none;
+    margin-bottom: 1rem;
+}
+
+.language-filter label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+}
+
+.language-filter label i {
+    color: var(--accent);
+    margin-right: 0.3rem;
+}
+
+.lang-tabs {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.lang-tab {
+    padding: 0.5rem 1.2rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.lang-tab:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.lang-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Language Selector (remove old styles) */
 .language-selector {
     margin-bottom: 1rem;
 }
