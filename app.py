@@ -385,32 +385,32 @@ def split_text_by_language(text):
 
 
 def extract_fields_by_language(text):
-    """Extract fields separately for each detected language section."""
+    """Extract fields separately for each detected language section.
+    All languages get the same fields - just with localized values where available."""
     lines = text.split('\n')
     result = {}
 
+    # First extract all fields from the full text (English base)
+    english_fields = extract_fields(text)
+
     # Separate lines by language
-    english_text = '\n'.join(l for l in lines if re.search(r'[A-Za-z]', l) and not re.search(r'[\u0C00-\u0C7F]', l) and not re.search(r'[\u0900-\u097F]', l))
     telugu_text = '\n'.join(l for l in lines if re.search(r'[\u0C00-\u0C7F]', l))
     hindi_text = '\n'.join(l for l in lines if re.search(r'[\u0900-\u097F]', l))
 
-    # Extract fields from English text (most structured data is in English)
-    if english_text:
-        result['English'] = extract_fields(english_text + '\n' + text)
+    # English always gets the full extracted fields
+    if re.search(r'[A-Za-z]', text):
+        result['English'] = english_fields.copy()
 
-    # For Telugu, extract all available fields
+    # Telugu - start with English fields, then override with Telugu values where available
     if telugu_text:
-        telugu_fields = {}
+        telugu_fields = english_fields.copy()
 
-        # Telugu name - get lines that are purely Telugu text (names)
-        # Exclude lines with labels like పుట్టిన తేదీ, చిరునామా, S/O etc.
-        telugu_lines = [l.strip() for l in telugu_text.split('\n') if l.strip()]
+        # Override Name with Telugu name
+        telugu_lines_list = [l.strip() for l in telugu_text.split('\n') if l.strip()]
         telugu_name_candidates = []
-        for l in telugu_lines:
-            # Skip label lines and address lines
+        for l in telugu_lines_list:
             if re.search(r'(పుట్టిన\s*తేదీ|చిరునామా|పురుషుడు|స్త్రీ|S/O|D/O|W/O|మండల|జిల్లా|రాష్ట్ర|పిన్)', l, re.IGNORECASE):
                 continue
-            # A name line is typically short (< 40 chars) and mostly Telugu script
             telugu_char_count = len(re.findall(r'[\u0C00-\u0C7F]', l))
             if telugu_char_count > 3 and len(l) < 40:
                 telugu_name_candidates.append(l)
@@ -418,104 +418,54 @@ def extract_fields_by_language(text):
         if telugu_name_candidates:
             telugu_fields['Name'] = telugu_name_candidates[0]
 
-        # Father's/Guardian's name in Telugu (S/O pattern)
+        # Override Father's name with Telugu
         father_match = re.search(r'(?:S/O|D/O|W/O)\s+([\u0C00-\u0C7F\s,]+)', telugu_text)
         if father_match:
             fname = father_match.group(1).strip().rstrip(',')
             if len(fname) > 2:
                 telugu_fields["Father's/Guardian's Name"] = fname
 
-        # DOB in Telugu
-        dob_match = re.search(r'(?:పుట్టిన\s*తేదీ|DOB)\s*[:/\-]?\s*(\d{2}[/\-\.]\d{2}[/\-\.]\d{4})', telugu_text)
-        if dob_match:
-            telugu_fields['Date of Birth'] = dob_match.group(1)
-
-        # Gender in Telugu
+        # Override Gender with Telugu
         if 'పురుషుడు' in telugu_text:
             telugu_fields['Gender'] = 'పురుషుడు (Male)'
         elif 'స్త్రీ' in telugu_text:
             telugu_fields['Gender'] = 'స్త్రీ (Female)'
 
-        # Aadhaar number (same across languages)
-        aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
-        if aadhaar_match:
-            telugu_fields['Aadhaar Number'] = aadhaar_match.group()
-
-        # Telugu address
+        # Override Address with Telugu address
         addr_match = re.search(r'చిరునామా\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|$)', telugu_text, re.DOTALL)
         if addr_match:
             addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
-            # Remove trailing numbers that might be Aadhaar
             addr = re.sub(r'\d{4}\s\d{4}\s\d{4}.*', '', addr).strip()
             if len(addr) > 5:
                 telugu_fields['Address'] = addr
 
-        # PIN Code
-        pin_match = re.search(r'(\d{6})', telugu_text)
-        if pin_match and pin_match.group(1)[0] != '0':
-            telugu_fields['PIN Code'] = pin_match.group(1)
+        result['Telugu'] = telugu_fields
 
-        # Mobile Number (same across languages - extract from full text)
-        mobile_pattern = r'(?:Mobile|Phone|Mob)\s*[:\-]?\s*(\d{10})'
-        mobile_match = re.search(mobile_pattern, text, re.IGNORECASE)
-        if mobile_match:
-            telugu_fields['Mobile'] = mobile_match.group(1)
-
-        # VID (same across languages)
-        vid_pattern = r'VID\s*[:\-]?\s*(\d{4}\s\d{4}\s\d{4}\s\d{4})'
-        vid_match = re.search(vid_pattern, text)
-        if vid_match:
-            telugu_fields['VID'] = vid_match.group(1)
-
-        if telugu_fields:
-            result['Telugu'] = telugu_fields
-
-    # For Hindi, extract all available fields
+    # Hindi - start with English fields, then override with Hindi values where available
     if hindi_text:
-        hindi_fields = {}
+        hindi_fields = english_fields.copy()
 
-        # Hindi name
+        # Override Name with Hindi
         hindi_name_lines = [l.strip() for l in hindi_text.split('\n')
                            if len(l.strip()) > 3
                            and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O)', l)]
         if hindi_name_lines:
             hindi_fields['Name'] = hindi_name_lines[0]
 
-        # Father's name in Hindi
-        father_match = re.search(r'S/O\s+([\u0900-\u097F\s]+)', hindi_text)
+        # Override Father's name with Hindi
+        father_match = re.search(r'(?:S/O|D/O|W/O)\s+([\u0900-\u097F\s,]+)', hindi_text)
         if father_match:
-            hindi_fields["Father's/Guardian's Name"] = father_match.group(1).strip()
+            fname = father_match.group(1).strip().rstrip(',')
+            if len(fname) > 2:
+                hindi_fields["Father's/Guardian's Name"] = fname
 
-        # DOB in Hindi
-        dob_match = re.search(r'(?:जन्म\s*तिथि|DOB)\s*[:/\-]?\s*(\d{2}[/\-\.]\d{2}[/\-\.]\d{4})', hindi_text)
-        if dob_match:
-            hindi_fields['Date of Birth'] = dob_match.group(1)
-
-        # Gender in Hindi
+        # Override Gender with Hindi
         if 'पुरुष' in hindi_text:
             hindi_fields['Gender'] = 'पुरुष (Male)'
         elif 'महिला' in hindi_text:
             hindi_fields['Gender'] = 'महिला (Female)'
 
-        # Aadhaar number
-        aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
-        if aadhaar_match:
-            hindi_fields['Aadhaar Number'] = aadhaar_match.group()
-
-        # Mobile Number
-        mobile_pattern = r'(?:Mobile|Phone|Mob)\s*[:\-]?\s*(\d{10})'
-        mobile_match = re.search(mobile_pattern, text, re.IGNORECASE)
-        if mobile_match:
-            hindi_fields['Mobile'] = mobile_match.group(1)
-
-        # VID
-        vid_pattern = r'VID\s*[:\-]?\s*(\d{4}\s\d{4}\s\d{4}\s\d{4})'
-        vid_match = re.search(vid_pattern, text)
-        if vid_match:
-            hindi_fields['VID'] = vid_match.group(1)
-
-        if hindi_fields:
-            result['Hindi'] = hindi_fields
+        result['Hindi'] = hindi_fields
 
     return result
 
