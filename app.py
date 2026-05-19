@@ -330,6 +330,116 @@ def extract_fields(text):
     return fields
 
 
+def detect_languages(text):
+    """Detect which languages are present in the text using Unicode ranges."""
+    languages = []
+
+    # Telugu: \u0C00-\u0C7F
+    if re.search(r'[\u0C00-\u0C7F]', text):
+        languages.append('Telugu')
+
+    # Hindi/Devanagari: \u0900-\u097F
+    if re.search(r'[\u0900-\u097F]', text):
+        languages.append('Hindi')
+
+    # English (Latin)
+    if re.search(r'[A-Za-z]', text):
+        languages.append('English')
+
+    return languages
+
+
+def split_text_by_language(text):
+    """Split extracted text into language-specific sections."""
+    lines = text.split('\n')
+    result = {}
+
+    english_lines = []
+    telugu_lines = []
+    hindi_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        has_telugu = bool(re.search(r'[\u0C00-\u0C7F]', stripped))
+        has_hindi = bool(re.search(r'[\u0900-\u097F]', stripped))
+        has_english = bool(re.search(r'[A-Za-z]', stripped))
+
+        if has_telugu:
+            telugu_lines.append(stripped)
+        elif has_hindi:
+            hindi_lines.append(stripped)
+        elif has_english:
+            english_lines.append(stripped)
+
+    if english_lines:
+        result['English'] = '\n'.join(english_lines)
+    if telugu_lines:
+        result['Telugu'] = '\n'.join(telugu_lines)
+    if hindi_lines:
+        result['Hindi'] = '\n'.join(hindi_lines)
+
+    return result
+
+
+def extract_fields_by_language(text):
+    """Extract fields separately for each detected language section."""
+    lines = text.split('\n')
+    result = {}
+
+    # Separate lines by language
+    english_text = '\n'.join(l for l in lines if re.search(r'[A-Za-z]', l) and not re.search(r'[\u0C00-\u0C7F]', l) and not re.search(r'[\u0900-\u097F]', l))
+    telugu_text = '\n'.join(l for l in lines if re.search(r'[\u0C00-\u0C7F]', l))
+    hindi_text = '\n'.join(l for l in lines if re.search(r'[\u0900-\u097F]', l))
+
+    # Extract fields from English text (most structured data is in English)
+    if english_text:
+        result['English'] = extract_fields(english_text + '\n' + text)
+
+    # For Telugu, extract name and address if present
+    if telugu_text:
+        telugu_fields = {}
+        # Telugu name (first substantial Telugu text line)
+        telugu_name_lines = [l.strip() for l in telugu_text.split('\n') if len(l.strip()) > 3 and not re.search(r'(పుట్టిన|తేదీ|చిరునామా|పురుషుడు|స్త్రీ)', l)]
+        if telugu_name_lines:
+            telugu_fields['Name (Telugu)'] = telugu_name_lines[0]
+
+        # Telugu address
+        addr_match = re.search(r'చిరునామా\s*[:\-]?\s*(.+)', telugu_text, re.DOTALL)
+        if addr_match:
+            addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
+            if len(addr) > 5:
+                telugu_fields['Address (Telugu)'] = addr
+
+        # Gender in Telugu
+        if 'పురుషుడు' in telugu_text:
+            telugu_fields['Gender (Telugu)'] = 'పురుషుడు (Male)'
+        elif 'స్త్రీ' in telugu_text:
+            telugu_fields['Gender (Telugu)'] = 'స్త్రీ (Female)'
+
+        if telugu_fields:
+            result['Telugu'] = telugu_fields
+
+    # For Hindi, extract name and address if present
+    if hindi_text:
+        hindi_fields = {}
+        hindi_name_lines = [l.strip() for l in hindi_text.split('\n') if len(l.strip()) > 3 and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला)', l)]
+        if hindi_name_lines:
+            hindi_fields['Name (Hindi)'] = hindi_name_lines[0]
+
+        if 'पुरुष' in hindi_text:
+            hindi_fields['Gender (Hindi)'] = 'पुरुष (Male)'
+        elif 'महिला' in hindi_text:
+            hindi_fields['Gender (Hindi)'] = 'महिला (Female)'
+
+        if hindi_fields:
+            result['Hindi'] = hindi_fields
+
+    return result
+
+
 def save_output(text, fields, filename):
     """Save extracted text and fields to a .txt file in the outputs folder."""
     output_filename = f"extracted_{os.path.splitext(filename)[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -416,6 +526,15 @@ async def upload_file(file: UploadFile = File(...), language: str = Form(default
         # Extract important fields using regex
         fields = extract_fields(extracted_text)
 
+        # Extract fields by language
+        fields_by_language = extract_fields_by_language(extracted_text)
+
+        # Split text by language
+        text_by_language = split_text_by_language(extracted_text)
+
+        # Detect languages present
+        detected_languages = detect_languages(extracted_text)
+
         # Save results to output file
         output_filename = save_output(extracted_text, fields, filename)
 
@@ -423,6 +542,9 @@ async def upload_file(file: UploadFile = File(...), language: str = Form(default
             'success': True,
             'text': extracted_text,
             'fields': fields,
+            'fields_by_language': fields_by_language,
+            'text_by_language': text_by_language,
+            'detected_languages': detected_languages,
             'image_url': f'/uploads/{filename}',
             'output_file': output_filename
         })

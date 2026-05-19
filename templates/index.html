@@ -94,6 +94,10 @@
                         <i class="fas fa-id-card"></i>
                         Structured Data
                     </div>
+                    <!-- Language Tabs for Structured Data -->
+                    <div class="language-filter" id="fieldsLanguageFilter">
+                        <div class="lang-tabs" id="fieldsLangTabs"></div>
+                    </div>
                     <div class="structured-grid" id="fieldsContainer">
                         <!-- Fields will be populated dynamically -->
                     </div>
@@ -106,12 +110,9 @@
                         Extracted Text
                     </div>
 
-                    <!-- Language Filter (shows only detected languages) -->
-                    <div class="language-filter" id="languageFilter">
-                        <label><i class="fas fa-language"></i> Filter by Language</label>
-                        <div class="lang-tabs" id="langTabs">
-                            <!-- Tabs populated dynamically -->
-                        </div>
+                    <!-- Language Tabs for Text -->
+                    <div class="language-filter" id="textLanguageFilter">
+                        <div class="lang-tabs" id="textLangTabs"></div>
                     </div>
 
                     <textarea class="text-output" id="extractedText" readonly
@@ -171,13 +172,19 @@
             'Document Type': 'fas fa-file-alt',
             'Aadhaar Number': 'fas fa-id-badge',
             'Name': 'fas fa-user',
+            'Name (Telugu)': 'fas fa-user',
+            'Name (Hindi)': 'fas fa-user',
             "Father's/Guardian's Name": 'fas fa-users',
             'Date of Birth': 'far fa-calendar-alt',
             'Gender': 'fas fa-venus-mars',
+            'Gender (Telugu)': 'fas fa-venus-mars',
+            'Gender (Hindi)': 'fas fa-venus-mars',
             'Mobile': 'fas fa-phone',
             'VID': 'fas fa-shield-alt',
             'PIN Code': 'fas fa-map-marker-alt',
             'Address': 'fas fa-home',
+            'Address (Telugu)': 'fas fa-home',
+            'Address (Hindi)': 'fas fa-home',
             'PAN Number': 'fas fa-credit-card',
             'Enrolment No.': 'fas fa-hashtag',
         };
@@ -321,110 +328,127 @@
         // Display Results
         // ============================================================
 
-        // Store all text data for language filtering
-        let allExtractedText = '';
-        let textByLanguage = {};
+        // Store data for language switching
+        let responseData = null;
 
         function displayResults(data) {
-            allExtractedText = data.text;
-            document.getElementById('extractedText').value = data.text;
-            textCard.classList.add('active');
+            responseData = data;
 
-            // Detect languages and build filter tabs
-            textByLanguage = detectLanguages(data.text);
-            buildLanguageTabs(textByLanguage);
+            const detectedLangs = data.detected_languages || [];
 
-            const fieldsContainer = document.getElementById('fieldsContainer');
-            fieldsContainer.innerHTML = '';
+            // Build language tabs for structured data
+            buildFieldsTabs(detectedLangs, data.fields_by_language);
 
-            if (data.fields && Object.keys(data.fields).length > 0) {
-                for (const [key, value] of Object.entries(data.fields)) {
-                    const icon = fieldIcons[key] || 'fas fa-info-circle';
-                    const isAddress = key === 'Address';
-                    const fieldItem = document.createElement('div');
-                    fieldItem.className = 'structured-field' + (isAddress ? ' field-wide' : '');
-                    fieldItem.innerHTML = `
-                        <div class="structured-field-label">
-                            <i class="${icon}"></i> ${key.toUpperCase()}
-                        </div>
-                        <div class="structured-field-value">${value}</div>
-                    `;
-                    fieldsContainer.appendChild(fieldItem);
-                }
-                fieldsCard.classList.add('active');
-            } else {
-                fieldsCard.classList.remove('active');
+            // Build language tabs for text
+            buildTextTabs(detectedLangs, data.text_by_language);
+
+            // Show first language by default for fields
+            if (detectedLangs.length > 0) {
+                showFieldsForLanguage(detectedLangs[0], data.fields_by_language);
+                showTextForLanguage(detectedLangs[0], data.text_by_language);
             }
 
+            fieldsCard.classList.add('active');
+            textCard.classList.add('active');
             outputFilename = data.output_file;
         }
 
-        // Detect which languages are present in the extracted text
-        function detectLanguages(text) {
-            const languages = {};
+        // Build language tabs for Structured Data
+        function buildFieldsTabs(languages, fieldsByLang) {
+            const tabsContainer = document.getElementById('fieldsLangTabs');
+            const filter = document.getElementById('fieldsLanguageFilter');
+            tabsContainer.innerHTML = '';
 
-            // Telugu Unicode range
-            const teluguLines = text.split('\n').filter(l => /[\u0C00-\u0C7F]/.test(l));
-            if (teluguLines.length > 0) {
-                languages['Telugu'] = teluguLines;
-            }
-
-            // Hindi/Devanagari Unicode range
-            const hindiLines = text.split('\n').filter(l => /[\u0900-\u097F]/.test(l));
-            if (hindiLines.length > 0) {
-                languages['Hindi'] = hindiLines;
-            }
-
-            // English (Latin characters, excluding lines that are purely non-Latin)
-            const englishLines = text.split('\n').filter(l => /[A-Za-z]/.test(l) && !/[\u0C00-\u0C7F]/.test(l) && !/[\u0900-\u097F]/.test(l));
-            if (englishLines.length > 0) {
-                languages['English'] = englishLines;
-            }
-
-            return languages;
-        }
-
-        // Build language filter tabs (only shows detected languages)
-        function buildLanguageTabs(languages) {
-            const langTabs = document.getElementById('langTabs');
-            const langFilter = document.getElementById('languageFilter');
-            langTabs.innerHTML = '';
-
-            const langKeys = Object.keys(languages);
-
-            // Hide filter if only one language detected
-            if (langKeys.length <= 1) {
-                langFilter.style.display = 'none';
+            if (languages.length <= 1) {
+                filter.style.display = 'none';
+                // Show the only language's fields directly
+                if (languages.length === 1) {
+                    showFieldsForLanguage(languages[0], fieldsByLang);
+                }
                 return;
             }
 
-            langFilter.style.display = 'block';
+            filter.style.display = 'block';
 
-            // "All" tab
-            const allTab = document.createElement('button');
-            allTab.className = 'lang-tab active';
-            allTab.textContent = 'All';
-            allTab.onclick = () => {
-                document.getElementById('extractedText').value = allExtractedText;
-                setActiveTab(allTab);
-            };
-            langTabs.appendChild(allTab);
-
-            // Tab for each detected language
-            langKeys.forEach(lang => {
+            languages.forEach((lang, index) => {
+                if (!fieldsByLang[lang]) return;
                 const tab = document.createElement('button');
-                tab.className = 'lang-tab';
+                tab.className = 'lang-tab' + (index === 0 ? ' active' : '');
                 tab.textContent = lang;
+                tab.setAttribute('data-target', 'fields');
                 tab.onclick = () => {
-                    document.getElementById('extractedText').value = languages[lang].join('\n').trim();
-                    setActiveTab(tab);
+                    showFieldsForLanguage(lang, fieldsByLang);
+                    setActiveTabInGroup(tab, 'fieldsLangTabs');
                 };
-                langTabs.appendChild(tab);
+                tabsContainer.appendChild(tab);
             });
         }
 
-        function setActiveTab(activeTab) {
-            document.querySelectorAll('.lang-tab').forEach(t => t.classList.remove('active'));
+        // Build language tabs for Extracted Text
+        function buildTextTabs(languages, textByLang) {
+            const tabsContainer = document.getElementById('textLangTabs');
+            const filter = document.getElementById('textLanguageFilter');
+            tabsContainer.innerHTML = '';
+
+            if (languages.length <= 1) {
+                filter.style.display = 'none';
+                if (languages.length === 1 && textByLang[languages[0]]) {
+                    document.getElementById('extractedText').value = textByLang[languages[0]];
+                } else {
+                    document.getElementById('extractedText').value = responseData.text;
+                }
+                return;
+            }
+
+            filter.style.display = 'block';
+
+            languages.forEach((lang, index) => {
+                if (!textByLang[lang]) return;
+                const tab = document.createElement('button');
+                tab.className = 'lang-tab' + (index === 0 ? ' active' : '');
+                tab.textContent = lang;
+                tab.setAttribute('data-target', 'text');
+                tab.onclick = () => {
+                    showTextForLanguage(lang, textByLang);
+                    setActiveTabInGroup(tab, 'textLangTabs');
+                };
+                tabsContainer.appendChild(tab);
+            });
+        }
+
+        // Show structured fields for a specific language
+        function showFieldsForLanguage(lang, fieldsByLang) {
+            const fieldsContainer = document.getElementById('fieldsContainer');
+            fieldsContainer.innerHTML = '';
+
+            const fields = fieldsByLang[lang];
+            if (!fields || Object.keys(fields).length === 0) {
+                fieldsContainer.innerHTML = '<p style="color: var(--text-secondary); padding: 1rem;">No structured data found for this language.</p>';
+                return;
+            }
+
+            for (const [key, value] of Object.entries(fields)) {
+                const icon = fieldIcons[key] || fieldIcons[key.replace(/ \(.*\)/, '')] || 'fas fa-info-circle';
+                const fieldItem = document.createElement('div');
+                fieldItem.className = 'structured-field';
+                fieldItem.innerHTML = `
+                    <div class="structured-field-label">
+                        <i class="${icon}"></i> ${key.toUpperCase()}
+                    </div>
+                    <div class="structured-field-value">${value}</div>
+                `;
+                fieldsContainer.appendChild(fieldItem);
+            }
+        }
+
+        // Show text for a specific language
+        function showTextForLanguage(lang, textByLang) {
+            const text = textByLang[lang] || 'No text found for this language.';
+            document.getElementById('extractedText').value = text;
+        }
+
+        function setActiveTabInGroup(activeTab, containerId) {
+            document.querySelectorAll(`#${containerId} .lang-tab`).forEach(t => t.classList.remove('active'));
             activeTab.classList.add('active');
         }
 
