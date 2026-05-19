@@ -402,17 +402,28 @@ def extract_fields_by_language(text):
     if telugu_text:
         telugu_fields = {}
 
-        # Telugu name (lines that are purely Telugu names, not labels)
-        telugu_name_lines = [l.strip() for l in telugu_text.split('\n')
-                            if len(l.strip()) > 3
-                            and not re.search(r'(పుట్టిన|తేదీ|చిరునామా|పురుషుడు|స్త్రీ|S/O|D/O|W/O)', l)]
-        if telugu_name_lines:
-            telugu_fields['Name'] = telugu_name_lines[0]
+        # Telugu name - get lines that are purely Telugu text (names)
+        # Exclude lines with labels like పుట్టిన తేదీ, చిరునామా, S/O etc.
+        telugu_lines = [l.strip() for l in telugu_text.split('\n') if l.strip()]
+        telugu_name_candidates = []
+        for l in telugu_lines:
+            # Skip label lines and address lines
+            if re.search(r'(పుట్టిన\s*తేదీ|చిరునామా|పురుషుడు|స్త్రీ|S/O|D/O|W/O|మండల|జిల్లా|రాష్ట్ర|పిన్)', l, re.IGNORECASE):
+                continue
+            # A name line is typically short (< 40 chars) and mostly Telugu script
+            telugu_char_count = len(re.findall(r'[\u0C00-\u0C7F]', l))
+            if telugu_char_count > 3 and len(l) < 40:
+                telugu_name_candidates.append(l)
+
+        if telugu_name_candidates:
+            telugu_fields['Name'] = telugu_name_candidates[0]
 
         # Father's/Guardian's name in Telugu (S/O pattern)
-        father_match = re.search(r'S/O\s+([\u0C00-\u0C7F\s]+)', telugu_text)
+        father_match = re.search(r'(?:S/O|D/O|W/O)\s+([\u0C00-\u0C7F\s,]+)', telugu_text)
         if father_match:
-            telugu_fields["Father's/Guardian's Name"] = father_match.group(1).strip()
+            fname = father_match.group(1).strip().rstrip(',')
+            if len(fname) > 2:
+                telugu_fields["Father's/Guardian's Name"] = fname
 
         # DOB in Telugu
         dob_match = re.search(r'(?:పుట్టిన\s*తేదీ|DOB)\s*[:/\-]?\s*(\d{2}[/\-\.]\d{2}[/\-\.]\d{4})', telugu_text)
