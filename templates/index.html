@@ -416,6 +416,34 @@
             });
         }
 
+        // Field labels in different languages
+        const fieldLabels = {
+            'English': {
+                'Document Type': 'DOCUMENT TYPE', 'Name': 'NAME',
+                "Father's/Guardian's Name": "FATHER'S/GUARDIAN'S NAME",
+                'Date of Birth': 'DATE OF BIRTH', 'Gender': 'GENDER',
+                'Aadhaar Number': 'AADHAAR NUMBER', 'PAN Number': 'PAN NUMBER',
+                'VID': 'VID', 'Mobile': 'MOBILE', 'Enrolment No.': 'ENROLMENT NO.',
+                'Address': 'ADDRESS', 'PIN Code': 'PIN CODE'
+            },
+            'Telugu': {
+                'Document Type': 'పత్రం రకం', 'Name': 'పేరు',
+                "Father's/Guardian's Name": "తండ్రి/సంరక్షకుడి పేరు",
+                'Date of Birth': 'పుట్టిన తేదీ', 'Gender': 'లింగం',
+                'Aadhaar Number': 'ఆధార్ నంబర్', 'PAN Number': 'పాన్ నంబర్',
+                'VID': 'VID', 'Mobile': 'మొబైల్', 'Enrolment No.': 'నమోదు సంఖ్య',
+                'Address': 'చిరునామా', 'PIN Code': 'పిన్ కోడ్'
+            },
+            'Hindi': {
+                'Document Type': 'दस्तावेज़ प्रकार', 'Name': 'नाम',
+                "Father's/Guardian's Name": "पिता/अभिभावक का नाम",
+                'Date of Birth': 'जन्म तिथि', 'Gender': 'लिंग',
+                'Aadhaar Number': 'आधार नंबर', 'PAN Number': 'पैन नंबर',
+                'VID': 'VID', 'Mobile': 'मोबाइल', 'Enrolment No.': 'नामांकन संख्या',
+                'Address': 'पता', 'PIN Code': 'पिन कोड'
+            }
+        };
+
         // Show structured fields for a specific language
         function showFieldsForLanguage(lang, fieldsByLang) {
             const fieldsContainer = document.getElementById('fieldsContainer');
@@ -427,13 +455,16 @@
                 return;
             }
 
+            const langLabels = fieldLabels[lang] || fieldLabels['English'];
+
             for (const [key, value] of Object.entries(fields)) {
-                const icon = fieldIcons[key] || fieldIcons[key.replace(/ \(.*\)/, '')] || 'fas fa-info-circle';
+                const icon = fieldIcons[key] || 'fas fa-info-circle';
+                const label = langLabels[key] || key.toUpperCase();
                 const fieldItem = document.createElement('div');
                 fieldItem.className = 'structured-field';
                 fieldItem.innerHTML = `
                     <div class="structured-field-label">
-                        <i class="${icon}"></i> ${key.toUpperCase()}
+                        <i class="${icon}"></i> ${label}
                     </div>
                     <div class="structured-field-value">${value}</div>
                 `;

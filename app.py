@@ -455,6 +455,18 @@ def extract_fields_by_language(text):
         if pin_match and pin_match.group(1)[0] != '0':
             telugu_fields['PIN Code'] = pin_match.group(1)
 
+        # Mobile Number (same across languages - extract from full text)
+        mobile_pattern = r'(?:Mobile|Phone|Mob)\s*[:\-]?\s*(\d{10})'
+        mobile_match = re.search(mobile_pattern, text, re.IGNORECASE)
+        if mobile_match:
+            telugu_fields['Mobile'] = mobile_match.group(1)
+
+        # VID (same across languages)
+        vid_pattern = r'VID\s*[:\-]?\s*(\d{4}\s\d{4}\s\d{4}\s\d{4})'
+        vid_match = re.search(vid_pattern, text)
+        if vid_match:
+            telugu_fields['VID'] = vid_match.group(1)
+
         if telugu_fields:
             result['Telugu'] = telugu_fields
 
@@ -490,33 +502,96 @@ def extract_fields_by_language(text):
         if aadhaar_match:
             hindi_fields['Aadhaar Number'] = aadhaar_match.group()
 
+        # Mobile Number
+        mobile_pattern = r'(?:Mobile|Phone|Mob)\s*[:\-]?\s*(\d{10})'
+        mobile_match = re.search(mobile_pattern, text, re.IGNORECASE)
+        if mobile_match:
+            hindi_fields['Mobile'] = mobile_match.group(1)
+
+        # VID
+        vid_pattern = r'VID\s*[:\-]?\s*(\d{4}\s\d{4}\s\d{4}\s\d{4})'
+        vid_match = re.search(vid_pattern, text)
+        if vid_match:
+            hindi_fields['VID'] = vid_match.group(1)
+
         if hindi_fields:
             result['Hindi'] = hindi_fields
 
     return result
 
 
-def format_extracted_text(fields):
-    """Format extracted fields into a clean readable text output."""
+def format_extracted_text(fields, lang='English'):
+    """Format extracted fields into a clean readable text output.
+    Labels are shown in the selected language."""
+
+    # Field labels in different languages
+    labels = {
+        'English': {
+            'Document Type': 'Document Type',
+            'Name': 'Name',
+            "Father's/Guardian's Name": "Father's/Guardian's Name",
+            'Date of Birth': 'Date of Birth',
+            'Gender': 'Gender',
+            'Aadhaar Number': 'Aadhaar Number',
+            'PAN Number': 'PAN Number',
+            'VID': 'VID',
+            'Mobile': 'Mobile',
+            'Enrolment No.': 'Enrolment No.',
+            'Address': 'Address',
+            'PIN Code': 'PIN Code',
+        },
+        'Telugu': {
+            'Document Type': 'పత్రం రకం',
+            'Name': 'పేరు',
+            "Father's/Guardian's Name": "తండ్రి/సంరక్షకుడి పేరు",
+            'Date of Birth': 'పుట్టిన తేదీ',
+            'Gender': 'లింగం',
+            'Aadhaar Number': 'ఆధార్ నంబర్',
+            'PAN Number': 'పాన్ నంబర్',
+            'VID': 'VID',
+            'Mobile': 'మొబైల్',
+            'Enrolment No.': 'నమోదు సంఖ్య',
+            'Address': 'చిరునామా',
+            'PIN Code': 'పిన్ కోడ్',
+        },
+        'Hindi': {
+            'Document Type': 'दस्तावेज़ प्रकार',
+            'Name': 'नाम',
+            "Father's/Guardian's Name": "पिता/अभिभावक का नाम",
+            'Date of Birth': 'जन्म तिथि',
+            'Gender': 'लिंग',
+            'Aadhaar Number': 'आधार नंबर',
+            'PAN Number': 'पैन नंबर',
+            'VID': 'VID',
+            'Mobile': 'मोबाइल',
+            'Enrolment No.': 'नामांकन संख्या',
+            'Address': 'पता',
+            'PIN Code': 'पिन कोड',
+        }
+    }
+
+    lang_labels = labels.get(lang, labels['English'])
+
     if not fields:
         return ""
 
     lines = []
-    # Define the order of fields for display
     field_order = [
-        'Document Type', 'Name', 'Father\'s/Guardian\'s Name',
+        'Document Type', 'Name', "Father's/Guardian's Name",
         'Date of Birth', 'Gender', 'Aadhaar Number', 'PAN Number',
         'VID', 'Mobile', 'Enrolment No.', 'Address', 'PIN Code'
     ]
 
     for key in field_order:
         if key in fields:
-            lines.append(f"{key}: {fields[key]}")
+            label = lang_labels.get(key, key)
+            lines.append(f"{label}: {fields[key]}")
 
     # Add any remaining fields not in the order
     for key, value in fields.items():
         if key not in field_order:
-            lines.append(f"{key}: {value}")
+            label = lang_labels.get(key, key)
+            lines.append(f"{label}: {value}")
 
     return '\n'.join(lines)
 
@@ -613,7 +688,7 @@ async def upload_file(file: UploadFile = File(...), language: str = Form(default
         # Build formatted text per language (structured output)
         text_by_language = {}
         for lang, lang_fields in fields_by_language.items():
-            text_by_language[lang] = format_extracted_text(lang_fields)
+            text_by_language[lang] = format_extracted_text(lang_fields, lang)
 
         # Detect languages present
         detected_languages = detect_languages(extracted_text)
