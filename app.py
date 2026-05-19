@@ -331,20 +331,24 @@ def extract_fields(text):
 
 
 def detect_languages(text):
-    """Detect which languages are present in the text using Unicode ranges."""
+    """Detect which languages are present in the text using Unicode ranges.
+    Only returns a language if there's meaningful content (more than just a few chars)."""
     languages = []
 
-    # Telugu: \u0C00-\u0C7F
-    if re.search(r'[\u0C00-\u0C7F]', text):
+    # English (Latin) - check for at least a few words
+    english_chars = len(re.findall(r'[A-Za-z]', text))
+    if english_chars > 10:
+        languages.append('English')
+
+    # Telugu: \u0C00-\u0C7F - need meaningful Telugu content
+    telugu_chars = len(re.findall(r'[\u0C00-\u0C7F]', text))
+    if telugu_chars > 10:
         languages.append('Telugu')
 
-    # Hindi/Devanagari: \u0900-\u097F
-    if re.search(r'[\u0900-\u097F]', text):
+    # Hindi/Devanagari: \u0900-\u097F - need meaningful Hindi content
+    hindi_chars = len(re.findall(r'[\u0900-\u097F]', text))
+    if hindi_chars > 10:
         languages.append('Hindi')
-
-    # English (Latin)
-    if re.search(r'[A-Za-z]', text):
-        languages.append('English')
 
     return languages
 
@@ -402,7 +406,7 @@ def extract_fields_by_language(text):
         result['English'] = english_fields.copy()
 
     # Telugu - start with English fields, then override with Telugu values where available
-    if telugu_text:
+    if telugu_text and len(re.findall(r'[\u0C00-\u0C7F]', telugu_text)) > 10:
         telugu_fields = english_fields.copy()
 
         # Override Name with Telugu name
@@ -425,11 +429,24 @@ def extract_fields_by_language(text):
             if len(fname) > 2:
                 telugu_fields["Father's/Guardian's Name"] = fname
 
-        # Override Gender with Telugu
-        if 'పురుషుడు' in telugu_text:
-            telugu_fields['Gender'] = 'పురుషుడు (Male)'
-        elif 'స్త్రీ' in telugu_text:
-            telugu_fields['Gender'] = 'స్త్రీ (Female)'
+        # Override Gender with Telugu (fully in Telugu)
+        if 'పురుషుడు' in telugu_text or telugu_fields.get('Gender', '').lower() == 'male':
+            telugu_fields['Gender'] = 'పురుషుడు'
+        elif 'స్త్రీ' in telugu_text or telugu_fields.get('Gender', '').lower() == 'female':
+            telugu_fields['Gender'] = 'స్త్రీ'
+
+        # Override Document Type in Telugu
+        doc_type = telugu_fields.get('Document Type', '')
+        if doc_type == 'Aadhaar Card':
+            telugu_fields['Document Type'] = 'ఆధార్ కార్డ్'
+        elif doc_type == 'PAN Card':
+            telugu_fields['Document Type'] = 'పాన్ కార్డ్'
+        elif doc_type == 'Passport':
+            telugu_fields['Document Type'] = 'పాస్‌పోర్ట్'
+        elif doc_type == 'Driving License':
+            telugu_fields['Document Type'] = 'డ్రైవింగ్ లైసెన్స్'
+        elif doc_type:
+            telugu_fields['Document Type'] = 'పత్రం'
 
         # Override Address with Telugu address
         addr_match = re.search(r'చిరునామా\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|$)', telugu_text, re.DOTALL)
@@ -442,7 +459,7 @@ def extract_fields_by_language(text):
         result['Telugu'] = telugu_fields
 
     # Hindi - start with English fields, then override with Hindi values where available
-    if hindi_text:
+    if hindi_text and len(re.findall(r'[\u0900-\u097F]', hindi_text)) > 10:
         hindi_fields = english_fields.copy()
 
         # Override Name with Hindi
@@ -459,11 +476,24 @@ def extract_fields_by_language(text):
             if len(fname) > 2:
                 hindi_fields["Father's/Guardian's Name"] = fname
 
-        # Override Gender with Hindi
-        if 'पुरुष' in hindi_text:
-            hindi_fields['Gender'] = 'पुरुष (Male)'
-        elif 'महिला' in hindi_text:
-            hindi_fields['Gender'] = 'महिला (Female)'
+        # Override Gender with Hindi (fully in Hindi)
+        if 'पुरुष' in hindi_text or hindi_fields.get('Gender', '').lower() == 'male':
+            hindi_fields['Gender'] = 'पुरुष'
+        elif 'महिला' in hindi_text or hindi_fields.get('Gender', '').lower() == 'female':
+            hindi_fields['Gender'] = 'महिला'
+
+        # Override Document Type in Hindi
+        doc_type = hindi_fields.get('Document Type', '')
+        if doc_type == 'Aadhaar Card':
+            hindi_fields['Document Type'] = 'आधार कार्ड'
+        elif doc_type == 'PAN Card':
+            hindi_fields['Document Type'] = 'पैन कार्ड'
+        elif doc_type == 'Passport':
+            hindi_fields['Document Type'] = 'पासपोर्ट'
+        elif doc_type == 'Driving License':
+            hindi_fields['Document Type'] = 'ड्राइविंग लाइसेंस'
+        elif doc_type:
+            hindi_fields['Document Type'] = 'दस्तावेज़'
 
         result['Hindi'] = hindi_fields
 
