@@ -397,7 +397,7 @@ def extract_fields_by_language(text):
     # First extract all fields from the full text (English base)
     english_fields = extract_fields(text)
 
-    # Separate lines by language
+    # Separate lines by language (lines with Hindi chars go to Hindi, even if mixed)
     telugu_text = '\n'.join(l for l in lines if re.search(r'[\u0C00-\u0C7F]', l))
     hindi_text = '\n'.join(l for l in lines if re.search(r'[\u0900-\u097F]', l))
 
@@ -465,12 +465,12 @@ def extract_fields_by_language(text):
         # Override Name with Hindi
         hindi_name_lines = [l.strip() for l in hindi_text.split('\n')
                            if len(l.strip()) > 3
-                           and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O)', l)]
+                           and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O|नामांकन|आधार|भारतीय)', l)]
         if hindi_name_lines:
             hindi_fields['Name'] = hindi_name_lines[0]
 
         # Override Father's name with Hindi
-        father_match = re.search(r'(?:S/O|D/O|W/O)\s+([\u0900-\u097F\s,]+)', hindi_text)
+        father_match = re.search(r'(?:S/O|D/O|W/O)\s*[:\-]?\s*([\u0900-\u097F\s,]+)', hindi_text)
         if father_match:
             fname = father_match.group(1).strip().rstrip(',')
             if len(fname) > 2:
@@ -481,6 +481,22 @@ def extract_fields_by_language(text):
             hindi_fields['Gender'] = 'पुरुष'
         elif 'महिला' in hindi_text or hindi_fields.get('Gender', '').lower() == 'female':
             hindi_fields['Gender'] = 'महिला'
+
+        # Override Address with Hindi address
+        # Look for "पता:" pattern
+        addr_match = re.search(r'पता\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|आधार|$)', hindi_text, re.DOTALL)
+        if addr_match:
+            addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
+            addr = re.sub(r'\d{4}\s\d{4}\s\d{4}.*', '', addr).strip()
+            if len(addr) > 5:
+                hindi_fields['Address'] = addr
+
+        # If no "पता:" found, look for S/O pattern in Hindi lines
+        if 'Address' not in hindi_fields or not re.search(r'[\u0900-\u097F]', hindi_fields.get('Address', '')):
+            so_addr_match = re.search(r'S/O\s*[:\-]?\s*([\u0900-\u097F][^\n]*(?:\n[^\n]*)*?[\d]{6})', hindi_text, re.DOTALL)
+            if so_addr_match:
+                addr = re.sub(r'\s+', ' ', so_addr_match.group(0).strip())
+                hindi_fields['Address'] = addr
 
         # Override Document Type in Hindi
         doc_type = hindi_fields.get('Document Type', '')
