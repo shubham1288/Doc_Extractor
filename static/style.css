@@ -279,38 +279,93 @@ body {
 }
 
 /* Extracted Fields */
-.fields-container {
+.structured-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
-    margin-bottom: 1rem;
 }
 
-.field-item {
+.structured-field {
     background: var(--bg-input);
     border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 1rem;
+    border-radius: 10px;
+    padding: 1.2rem;
     transition: border-color 0.3s ease;
 }
 
-.field-item:hover {
+.structured-field:hover {
     border-color: var(--accent);
 }
 
-.field-label {
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--accent);
-    margin-bottom: 0.3rem;
-    font-weight: 600;
+.structured-field.field-wide {
+    grid-column: span 1;
 }
 
-.field-value {
-    font-size: 1rem;
+.structured-field-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.structured-field-label i {
+    color: var(--accent);
+    font-size: 0.8rem;
+}
+
+.structured-field-value {
+    font-size: 1.05rem;
     color: var(--text-primary);
+    font-weight: 600;
+    word-break: break-word;
+    line-height: 1.5;
+}
+
+/* Language Selector */
+.language-selector {
+    margin-bottom: 1rem;
+}
+
+.language-selector label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.4rem;
     font-weight: 500;
+}
+
+.language-selector label i {
+    color: var(--accent);
+    margin-right: 0.3rem;
+}
+
+.lang-select {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+    appearance: auto;
+}
+
+.lang-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.lang-select option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 /* Text Output */
@@ -439,7 +494,7 @@ body {
         font-size: 1.4rem;
     }
 
-    .fields-container {
+    .structured-grid {
         grid-template-columns: 1fr;
     }
 
@@ -450,6 +505,12 @@ body {
     .btn-secondary {
         width: 100%;
         justify-content: center;
+    }
+}
+
+@media (max-width: 992px) {
+    .structured-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }
 

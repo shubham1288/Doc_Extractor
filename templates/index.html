@@ -36,13 +36,26 @@
         <div class="row g-4">
 
             <!-- Left Column: Upload Section (Sticky) -->
-            <div class="col-lg-5">
+            <div class="col-lg-4">
                 <div class="sticky-upload">
                 <!-- Upload Card -->
                 <div class="card">
                     <div class="card-title">
                         <i class="fas fa-cloud-upload-alt"></i>
                         Upload Document
+                    </div>
+
+                    <!-- Language Selector -->
+                    <div class="language-selector">
+                        <label for="langSelect"><i class="fas fa-language"></i> OCR Language</label>
+                        <select id="langSelect" class="lang-select">
+                            <option value="eng+hin+tel">All (English + Hindi + Telugu)</option>
+                            <option value="eng">English Only</option>
+                            <option value="hin">Hindi Only</option>
+                            <option value="tel">Telugu Only</option>
+                            <option value="eng+hin">English + Hindi</option>
+                            <option value="eng+tel">English + Telugu</option>
+                        </select>
                     </div>
 
                     <!-- Drag & Drop Upload Area -->
@@ -76,7 +89,7 @@
             </div>
 
             <!-- Right Column: Results Section -->
-            <div class="col-lg-7">
+            <div class="col-lg-8">
                 <!-- Alert Messages -->
                 <div class="alert alert-error" id="errorAlert">
                     <i class="fas fa-exclamation-circle"></i>
@@ -88,13 +101,13 @@
                     <span id="successMessage"></span>
                 </div>
 
-                <!-- Extracted Fields Card -->
+                <!-- Structured Data Card -->
                 <div class="card results-section" id="fieldsCard">
                     <div class="card-title">
                         <i class="fas fa-id-card"></i>
-                        Extracted Fields
+                        Structured Data
                     </div>
-                    <div class="fields-container" id="fieldsContainer">
+                    <div class="structured-grid" id="fieldsContainer">
                         <!-- Fields will be populated dynamically -->
                     </div>
                 </div>
@@ -124,7 +137,7 @@
                         </button>
                     </div>
                 </div>
-            </div> <!-- end col-lg-7 -->
+            </div> <!-- end col-lg-8 -->
         </div> <!-- end row -->
     </div> <!-- end main-container -->
 
@@ -157,11 +170,26 @@
         let selectedFile = null;
         let outputFilename = null;
 
+        // Field icon mapping
+        const fieldIcons = {
+            'Document Type': 'fas fa-file-alt',
+            'Aadhaar Number': 'fas fa-id-badge',
+            'Name': 'fas fa-user',
+            "Father's/Guardian's Name": 'fas fa-users',
+            'Date of Birth': 'far fa-calendar-alt',
+            'Gender': 'fas fa-venus-mars',
+            'Mobile': 'fas fa-phone',
+            'VID': 'fas fa-shield-alt',
+            'PIN Code': 'fas fa-map-marker-alt',
+            'Address': 'fas fa-home',
+            'PAN Number': 'fas fa-credit-card',
+            'Enrolment No.': 'fas fa-hashtag',
+        };
+
         // ============================================================
         // Drag & Drop Handlers
         // ============================================================
 
-        // Prevent default drag behaviors
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             uploadArea.addEventListener(eventName, preventDefaults, false);
         });
@@ -171,7 +199,6 @@
             e.stopPropagation();
         }
 
-        // Highlight drop area on drag
         ['dragenter', 'dragover'].forEach(eventName => {
             uploadArea.addEventListener(eventName, () => {
                 uploadArea.classList.add('dragover');
@@ -184,7 +211,6 @@
             });
         });
 
-        // Handle dropped files
         uploadArea.addEventListener('drop', (e) => {
             const files = e.dataTransfer.files;
             if (files.length > 0) {
@@ -192,12 +218,10 @@
             }
         });
 
-        // Click to upload
         uploadArea.addEventListener('click', () => {
             fileInput.click();
         });
 
-        // File input change
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) {
                 handleFile(e.target.files[0]);
@@ -209,14 +233,12 @@
         // ============================================================
 
         function handleFile(file) {
-            // Validate file type
             const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
             if (!allowedTypes.includes(file.type)) {
                 showError('Invalid file type. Only JPG, JPEG, PNG, and PDF files are allowed.');
                 return;
             }
 
-            // Validate file size (16MB max)
             if (file.size > 16 * 1024 * 1024) {
                 showError('File is too large. Maximum size is 16MB.');
                 return;
@@ -224,7 +246,6 @@
 
             selectedFile = file;
 
-            // Show file preview
             if (file.type === 'application/pdf') {
                 previewImage.src = 'https://cdn-icons-png.flaticon.com/512/337/337946.png';
             } else {
@@ -239,8 +260,6 @@
             fileSize.textContent = formatFileSize(file.size);
             filePreview.classList.add('active');
             extractBtn.disabled = false;
-
-            // Hide any previous alerts
             hideAlerts();
         }
 
@@ -270,16 +289,14 @@
                 return;
             }
 
-            // Show loading spinner
             spinnerOverlay.classList.add('active');
             hideAlerts();
             extractBtn.disabled = true;
 
-            // Create form data
             const formData = new FormData();
             formData.append('file', selectedFile);
+            formData.append('language', document.getElementById('langSelect').value);
 
-            // Send to server
             fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -294,10 +311,7 @@
                     return;
                 }
 
-                // Show success
                 showSuccess('Text extracted successfully!');
-
-                // Display results
                 displayResults(data);
             })
             .catch(error => {
@@ -313,21 +327,23 @@
         // ============================================================
 
         function displayResults(data) {
-            // Show extracted text
             document.getElementById('extractedText').value = data.text;
             textCard.classList.add('active');
 
-            // Show extracted fields
             const fieldsContainer = document.getElementById('fieldsContainer');
             fieldsContainer.innerHTML = '';
 
             if (data.fields && Object.keys(data.fields).length > 0) {
                 for (const [key, value] of Object.entries(data.fields)) {
+                    const icon = fieldIcons[key] || 'fas fa-info-circle';
+                    const isAddress = key === 'Address';
                     const fieldItem = document.createElement('div');
-                    fieldItem.className = 'field-item';
+                    fieldItem.className = 'structured-field' + (isAddress ? ' field-wide' : '');
                     fieldItem.innerHTML = `
-                        <div class="field-label">${key}</div>
-                        <div class="field-value">${value}</div>
+                        <div class="structured-field-label">
+                            <i class="${icon}"></i> ${key.toUpperCase()}
+                        </div>
+                        <div class="structured-field-value">${value}</div>
                     `;
                     fieldsContainer.appendChild(fieldItem);
                 }
@@ -336,7 +352,6 @@
                 fieldsCard.classList.remove('active');
             }
 
-            // Show uploaded image
             outputFilename = data.output_file;
         }
 
@@ -356,7 +371,6 @@
             navigator.clipboard.writeText(text).then(() => {
                 showToast('Copied to clipboard!');
             }).catch(() => {
-                // Fallback for older browsers
                 textArea.select();
                 document.execCommand('copy');
                 showToast('Copied to clipboard!');

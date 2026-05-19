@@ -7,7 +7,7 @@ using Tesseract OCR with OpenCV preprocessing.
 import os
 import re
 from datetime import datetime
-from fastapi import FastAPI, File, UploadFile, Request
+from fastapi import FastAPI, File, UploadFile, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -60,7 +60,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def preprocess_image(image_path):
+def preprocess_image(image_path, lang='eng+hin+tel'):
     """
     Preprocess the image using OpenCV to improve OCR accuracy.
     Uses multiple preprocessing strategies and returns the best result.
@@ -114,7 +114,7 @@ def preprocess_image(image_path):
         # OCR with optimized config for document cards
         text = pytesseract.image_to_string(
             temp_path,
-            lang='eng+hin+tel',
+            lang=lang,
             config='--oem 3 --psm 6'
         )
 
@@ -130,7 +130,7 @@ def preprocess_image(image_path):
     return best_text.strip() if best_text else ""
 
 
-def extract_text(image_path):
+def extract_text(image_path, lang='eng+hin+tel'):
     """
     Extract text from the image or PDF using Tesseract OCR.
     Uses multiple preprocessing strategies for best accuracy.
@@ -139,13 +139,13 @@ def extract_text(image_path):
     file_ext = os.path.splitext(image_path)[1].lower()
 
     if file_ext == '.pdf':
-        return extract_text_from_pdf(image_path)
+        return extract_text_from_pdf(image_path, lang)
 
     # Use the multi-strategy preprocessing pipeline
-    return preprocess_image(image_path)
+    return preprocess_image(image_path, lang)
 
 
-def extract_text_from_pdf(pdf_path):
+def extract_text_from_pdf(pdf_path, lang='eng+hin+tel'):
     """
     Extract text from a PDF file.
     First tries to extract embedded text directly.
@@ -175,7 +175,7 @@ def extract_text_from_pdf(pdf_path):
             pix.save(temp_image_path)
 
             # Use multi-strategy preprocessing pipeline
-            page_text = preprocess_image(temp_image_path)
+            page_text = preprocess_image(temp_image_path, lang)
 
             if page_text:
                 all_text.append(page_text)
@@ -195,6 +195,19 @@ def extract_fields(text):
     PAN Number, Address, PIN Code, Mobile, VID, Enrolment No.
     """
     fields = {}
+
+    # Detect Document Type
+    text_upper = text.upper()
+    if re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text) and ('AADHAAR' in text_upper or 'UIDAI' in text_upper or 'UID' in text_upper or re.search(r'VID\s*:', text)):
+        fields['Document Type'] = 'Aadhaar Card'
+    elif re.search(r'\b[A-Z]{5}\d{4}[A-Z]\b', text):
+        fields['Document Type'] = 'PAN Card'
+    elif 'PASSPORT' in text_upper or 'REPUBLIC OF INDIA' in text_upper:
+        fields['Document Type'] = 'Passport'
+    elif 'DRIVING' in text_upper or 'LICENCE' in text_upper or 'LICENSE' in text_upper:
+        fields['Document Type'] = 'Driving License'
+    else:
+        fields['Document Type'] = 'Document'
 
     # Extract Aadhaar Number (format: XXXX XXXX XXXX)
     aadhaar_pattern = r'\b\d{4}\s\d{4}\s\d{4}\b'
@@ -353,7 +366,7 @@ async def index(request: Request):
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(file: UploadFile = File(...), language: str = Form(default="eng+hin+tel")):
     """Handle file upload and OCR extraction."""
 
     # Check if a file was actually selected
@@ -392,7 +405,7 @@ async def upload_file(file: UploadFile = File(...)):
             f.write(contents)
 
         # Extract text using OCR
-        extracted_text = extract_text(filepath)
+        extracted_text = extract_text(filepath, language)
 
         if not extracted_text:
             return JSONResponse(
