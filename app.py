@@ -215,39 +215,40 @@ def extract_fields(text):
     if aadhaar_match:
         fields['Aadhaar Number'] = aadhaar_match.group()
 
-    # Extract Name (English name in CAPS, typically after a Telugu/Hindi name)
+    # Extract Name (English name - various formats on Indian ID cards)
     name_patterns = [
-        r'(?:DOB|MALE|FEMALE).*?\n\s*([A-Z][A-Z\s]+)\n',  # Name line after DOB/gender
-        r'\n([A-Z][A-Z\s]{3,40})\n\s*(?:S/O|D/O|W/O|C/O)',  # Name before S/O, D/O
-        r'(?:Name|NAME)\s*[:\-]?\s*([A-Z][A-Z\s]{3,40})',
-        r'\n([A-Z]{2,}\s[A-Z]{2,}(?:\s[A-Z]{2,})?)\s*\n',  # Two or three capitalized words
+        r'(?:DOB|MALE|FEMALE).*?\n\s*([A-Z][A-Za-z\s]+)\n',  # Name line after DOB/gender
+        r'\n([A-Z][A-Za-z\s]{3,40})\n\s*(?:S/O|D/O|W/O|C/O)',  # Name before S/O, D/O
+        r'\n([A-Z][a-z]+\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*\n',  # Title case name like "Bheru Lal Meghwal"
+        r'(?:Name|NAME)\s*[:\-]?\s*([A-Z][A-Za-z\s]{3,40})',
+        r'\n([A-Z]{2,}\s[A-Z]{2,}(?:\s[A-Z]{2,})?)\s*\n',  # All caps name
     ]
     for pattern in name_patterns:
         name_match = re.search(pattern, text)
         if name_match:
             name = name_match.group(1).strip()
             # Filter out common non-name strings
-            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'ADDRESS', 'UNIQUE', 'AUTHORITY']
-            if len(name) > 3 and len(name) < 50 and not any(w in name for w in skip_words):
-                fields['Name'] = name.title()
+            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'ADDRESS', 'UNIQUE', 'AUTHORITY', 'INFORMATION', 'IDENTIFICATION']
+            if len(name) > 3 and len(name) < 50 and not any(w in name.upper() for w in skip_words):
+                fields['Name'] = name if name[0].isupper() and name[1].islower() else name.title()
                 break
 
     # If name not found from patterns, try specific Aadhaar format
     if 'Name' not in fields:
-        # Look for pattern like "NANDYALA NAVEEN" (all caps name on its own line)
-        all_caps_name = re.search(r'\n([A-Z][A-Z]+\s[A-Z][A-Z]+(?:\s[A-Z]+)?)\s*\n', text)
-        if all_caps_name:
-            candidate = all_caps_name.group(1).strip()
-            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'UNIQUE', 'AUTHORITY', 'IDENTIFICATION']
-            if not any(w in candidate for w in skip_words):
-                fields['Name'] = candidate.title()
+        # Look for English name on its own line (mixed case or all caps)
+        name_line = re.search(r'\n\s*([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+){1,3})\s*\n', text)
+        if name_line:
+            candidate = name_line.group(1).strip()
+            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'UNIQUE', 'AUTHORITY', 'IDENTIFICATION', 'INFORMATION']
+            if not any(w in candidate.upper() for w in skip_words) and len(candidate) > 5:
+                fields['Name'] = candidate
 
-    # Extract Father's/Spouse Name (S/O, D/O, W/O, C/O)
-    relation_pattern = r'(?:S/O|D/O|W/O|C/O)\s+([A-Za-z][A-Za-z\s,]+?)(?:,|\n|\d)'
+    # Extract Father's/Spouse Name (S/O, D/O, W/O, C/O - with optional colon)
+    relation_pattern = r'(?:S/O|D/O|W/O|C/O)\s*[:\-]?\s*([A-Za-z][A-Za-z\s,]+?)(?:,\s*\n|,\s*[A-Z]|\n|\d)'
     relation_match = re.search(relation_pattern, text)
     if relation_match:
         relation_name = relation_match.group(1).strip().rstrip(',')
-        if len(relation_name) > 3:
+        if len(relation_name) > 3 and len(relation_name) < 50:
             fields["Father's/Guardian's Name"] = relation_name.title()
 
     # Extract Date of Birth (look for dates near DOB/birth labels first)
