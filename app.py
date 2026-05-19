@@ -114,7 +114,7 @@ def preprocess_image(image_path):
         # OCR with optimized config for document cards
         text = pytesseract.image_to_string(
             temp_path,
-            lang='eng',
+            lang='eng+hin+tel',
             config='--oem 3 --psm 6'
         )
 
