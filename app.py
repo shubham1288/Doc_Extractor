@@ -398,46 +398,116 @@ def extract_fields_by_language(text):
     if english_text:
         result['English'] = extract_fields(english_text + '\n' + text)
 
-    # For Telugu, extract name and address if present
+    # For Telugu, extract all available fields
     if telugu_text:
         telugu_fields = {}
-        # Telugu name (first substantial Telugu text line)
-        telugu_name_lines = [l.strip() for l in telugu_text.split('\n') if len(l.strip()) > 3 and not re.search(r'(పుట్టిన|తేదీ|చిరునామా|పురుషుడు|స్త్రీ)', l)]
-        if telugu_name_lines:
-            telugu_fields['Name (Telugu)'] = telugu_name_lines[0]
 
-        # Telugu address
-        addr_match = re.search(r'చిరునామా\s*[:\-]?\s*(.+)', telugu_text, re.DOTALL)
-        if addr_match:
-            addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
-            if len(addr) > 5:
-                telugu_fields['Address (Telugu)'] = addr
+        # Telugu name (lines that are purely Telugu names, not labels)
+        telugu_name_lines = [l.strip() for l in telugu_text.split('\n')
+                            if len(l.strip()) > 3
+                            and not re.search(r'(పుట్టిన|తేదీ|చిరునామా|పురుషుడు|స్త్రీ|S/O|D/O|W/O)', l)]
+        if telugu_name_lines:
+            telugu_fields['Name'] = telugu_name_lines[0]
+
+        # Father's/Guardian's name in Telugu (S/O pattern)
+        father_match = re.search(r'S/O\s+([\u0C00-\u0C7F\s]+)', telugu_text)
+        if father_match:
+            telugu_fields["Father's/Guardian's Name"] = father_match.group(1).strip()
+
+        # DOB in Telugu
+        dob_match = re.search(r'(?:పుట్టిన\s*తేదీ|DOB)\s*[:/\-]?\s*(\d{2}[/\-\.]\d{2}[/\-\.]\d{4})', telugu_text)
+        if dob_match:
+            telugu_fields['Date of Birth'] = dob_match.group(1)
 
         # Gender in Telugu
         if 'పురుషుడు' in telugu_text:
-            telugu_fields['Gender (Telugu)'] = 'పురుషుడు (Male)'
+            telugu_fields['Gender'] = 'పురుషుడు (Male)'
         elif 'స్త్రీ' in telugu_text:
-            telugu_fields['Gender (Telugu)'] = 'స్త్రీ (Female)'
+            telugu_fields['Gender'] = 'స్త్రీ (Female)'
+
+        # Aadhaar number (same across languages)
+        aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
+        if aadhaar_match:
+            telugu_fields['Aadhaar Number'] = aadhaar_match.group()
+
+        # Telugu address
+        addr_match = re.search(r'చిరునామా\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|$)', telugu_text, re.DOTALL)
+        if addr_match:
+            addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
+            # Remove trailing numbers that might be Aadhaar
+            addr = re.sub(r'\d{4}\s\d{4}\s\d{4}.*', '', addr).strip()
+            if len(addr) > 5:
+                telugu_fields['Address'] = addr
+
+        # PIN Code
+        pin_match = re.search(r'(\d{6})', telugu_text)
+        if pin_match and pin_match.group(1)[0] != '0':
+            telugu_fields['PIN Code'] = pin_match.group(1)
 
         if telugu_fields:
             result['Telugu'] = telugu_fields
 
-    # For Hindi, extract name and address if present
+    # For Hindi, extract all available fields
     if hindi_text:
         hindi_fields = {}
-        hindi_name_lines = [l.strip() for l in hindi_text.split('\n') if len(l.strip()) > 3 and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला)', l)]
-        if hindi_name_lines:
-            hindi_fields['Name (Hindi)'] = hindi_name_lines[0]
 
+        # Hindi name
+        hindi_name_lines = [l.strip() for l in hindi_text.split('\n')
+                           if len(l.strip()) > 3
+                           and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O)', l)]
+        if hindi_name_lines:
+            hindi_fields['Name'] = hindi_name_lines[0]
+
+        # Father's name in Hindi
+        father_match = re.search(r'S/O\s+([\u0900-\u097F\s]+)', hindi_text)
+        if father_match:
+            hindi_fields["Father's/Guardian's Name"] = father_match.group(1).strip()
+
+        # DOB in Hindi
+        dob_match = re.search(r'(?:जन्म\s*तिथि|DOB)\s*[:/\-]?\s*(\d{2}[/\-\.]\d{2}[/\-\.]\d{4})', hindi_text)
+        if dob_match:
+            hindi_fields['Date of Birth'] = dob_match.group(1)
+
+        # Gender in Hindi
         if 'पुरुष' in hindi_text:
-            hindi_fields['Gender (Hindi)'] = 'पुरुष (Male)'
+            hindi_fields['Gender'] = 'पुरुष (Male)'
         elif 'महिला' in hindi_text:
-            hindi_fields['Gender (Hindi)'] = 'महिला (Female)'
+            hindi_fields['Gender'] = 'महिला (Female)'
+
+        # Aadhaar number
+        aadhaar_match = re.search(r'\b\d{4}\s\d{4}\s\d{4}\b', text)
+        if aadhaar_match:
+            hindi_fields['Aadhaar Number'] = aadhaar_match.group()
 
         if hindi_fields:
             result['Hindi'] = hindi_fields
 
     return result
+
+
+def format_extracted_text(fields):
+    """Format extracted fields into a clean readable text output."""
+    if not fields:
+        return ""
+
+    lines = []
+    # Define the order of fields for display
+    field_order = [
+        'Document Type', 'Name', 'Father\'s/Guardian\'s Name',
+        'Date of Birth', 'Gender', 'Aadhaar Number', 'PAN Number',
+        'VID', 'Mobile', 'Enrolment No.', 'Address', 'PIN Code'
+    ]
+
+    for key in field_order:
+        if key in fields:
+            lines.append(f"{key}: {fields[key]}")
+
+    # Add any remaining fields not in the order
+    for key, value in fields.items():
+        if key not in field_order:
+            lines.append(f"{key}: {value}")
+
+    return '\n'.join(lines)
 
 
 def save_output(text, fields, filename):
@@ -529,8 +599,10 @@ async def upload_file(file: UploadFile = File(...), language: str = Form(default
         # Extract fields by language
         fields_by_language = extract_fields_by_language(extracted_text)
 
-        # Split text by language
-        text_by_language = split_text_by_language(extracted_text)
+        # Build formatted text per language (structured output)
+        text_by_language = {}
+        for lang, lang_fields in fields_by_language.items():
+            text_by_language[lang] = format_extracted_text(lang_fields)
 
         # Detect languages present
         detected_languages = detect_languages(extracted_text)
