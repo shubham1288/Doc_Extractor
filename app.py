@@ -410,6 +410,25 @@ def extract_fields_by_language(text):
     # English always gets the full extracted fields
     if re.search(r'[A-Za-z]', text):
         result['English'] = english_fields.copy()
+        # Ensure English address doesn't contain Telugu/Hindi text
+        eng_address = result['English'].get('Address', '')
+        if re.search(r'[\u0C00-\u0C7F\u0900-\u097F]', eng_address):
+            # Try to find English-only address
+            eng_addr_match = re.search(r'Address\s*[:\-]?\s*(S/O[^$]*?(?:\d{6}))', text, re.DOTALL | re.IGNORECASE)
+            if eng_addr_match:
+                addr = re.sub(r'\s+', ' ', eng_addr_match.group(1).strip())
+                if not re.search(r'[\u0C00-\u0C7F\u0900-\u097F]', addr):
+                    result['English']['Address'] = addr
+                else:
+                    # Remove non-English chars from address
+                    addr_clean = re.sub(r'[\u0C00-\u0C7F\u0900-\u097F]+', '', eng_address)
+                    addr_clean = re.sub(r'\s+', ' ', addr_clean).strip()
+                    if len(addr_clean) > 10:
+                        result['English']['Address'] = addr_clean
+                    else:
+                        del result['English']['Address']
+            else:
+                del result['English']['Address']
 
     # Telugu - start with English fields, then override with Telugu values where available
     if telugu_text and len(re.findall(r'[\u0C00-\u0C7F]', telugu_text)) > 10:
