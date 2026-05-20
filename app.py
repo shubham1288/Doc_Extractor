@@ -495,7 +495,7 @@ def extract_fields_by_language(text):
             hindi_fields['Name'] = hindi_name_lines[0]
 
         # Override Father's name with Hindi
-        father_match = re.search(r'(?:S/O|D/O|W/O)\s*[:\-]?\s*([\u0900-\u097F\s,]+)', hindi_text)
+        father_match = re.search(r'(?:S/O|D/O|W/O)\s*[:\-]?\s*([\u0900-\u097F\s]+?)(?:,|\n|$)', hindi_text)
         if father_match:
             fname = father_match.group(1).strip().rstrip(',')
             if len(fname) > 2:
