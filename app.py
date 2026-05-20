@@ -264,29 +264,30 @@ def extract_fields(text):
 
     # Extract Name (English name - various formats on Indian ID cards)
     name_patterns = [
-        r'(?:DOB|MALE|FEMALE).*?\n\s*([A-Z][A-Za-z\s]+)\n',  # Name line after DOB/gender
-        r'\n([A-Z][A-Za-z\s]{3,40})\n\s*(?:S/O|D/O|W/O|C/O)',  # Name before S/O, D/O
-        r'\n([A-Z][a-z]+\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*\n',  # Title case name like "Bheru Lal Meghwal"
-        r'(?:Name|NAME)\s*[:\-]?\s*([A-Z][A-Za-z\s]{3,40})',
-        r'\n([A-Z]{2,}\s[A-Z]{2,}(?:\s[A-Z]{2,})?)\s*\n',  # All caps name
+        r'\n([A-Z][a-z]+\s[A-Z][a-z]+(?:\s[A-Z][a-z]+)?)\s*\n',  # Title case: "Bheru Lal Meghwal"
+        r'(?:DOB|MALE|FEMALE).*?\n\s*([A-Z][A-Za-z\s]{3,30}?)\s*(?:\n|Gender|DOB|Date)',  # After DOB/gender
+        r'\n([A-Z][A-Za-z]{2,}\s[A-Z][A-Za-z]{2,}(?:\s[A-Z][A-Za-z]+)?)\s*\n',  # Two/three words
+        r'(?:Name|NAME)\s*[:\-]?\s*([A-Z][A-Za-z\s]{3,30}?)(?:\n|Gender|DOB|Date|$)',
     ]
     for pattern in name_patterns:
         name_match = re.search(pattern, text)
         if name_match:
             name = name_match.group(1).strip()
+            # Remove trailing common words that aren't part of the name
+            name = re.sub(r'\s*(Gender|DOB|Date|Male|Female|MALE|FEMALE|Address|Father).*$', '', name, flags=re.IGNORECASE).strip()
             # Filter out common non-name strings
-            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'ADDRESS', 'UNIQUE', 'AUTHORITY', 'INFORMATION', 'IDENTIFICATION']
-            if len(name) > 3 and len(name) < 50 and not any(w in name.upper() for w in skip_words):
-                fields['Name'] = name if name[0].isupper() and name[1].islower() else name.title()
+            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'ADDRESS', 'UNIQUE', 'AUTHORITY', 'INFORMATION', 'IDENTIFICATION', 'GENDER', 'INCOME', 'TAX', 'DEPARTMENT']
+            if len(name) > 3 and len(name) < 40 and not any(w in name.upper() for w in skip_words):
+                fields['Name'] = name if name[0].isupper() and len(name) > 1 and name[1].islower() else name.title()
                 break
 
-    # If name not found from patterns, try specific Aadhaar format
+    # If name not found from patterns, try specific format
     if 'Name' not in fields:
-        # Look for English name on its own line (mixed case or all caps)
         name_line = re.search(r'\n\s*([A-Z][a-zA-Z]+(?:\s[A-Z][a-zA-Z]+){1,3})\s*\n', text)
         if name_line:
             candidate = name_line.group(1).strip()
-            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'UNIQUE', 'AUTHORITY', 'IDENTIFICATION', 'INFORMATION']
+            candidate = re.sub(r'\s*(Gender|DOB|Date|Male|Female).*$', '', candidate, flags=re.IGNORECASE).strip()
+            skip_words = ['MALE', 'FEMALE', 'GOVERNMENT', 'INDIA', 'AADHAAR', 'UNIQUE', 'AUTHORITY', 'IDENTIFICATION', 'INFORMATION', 'GENDER', 'INCOME', 'TAX']
             if not any(w in candidate.upper() for w in skip_words) and len(candidate) > 5:
                 fields['Name'] = candidate
 
