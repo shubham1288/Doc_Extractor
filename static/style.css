@@ -155,7 +155,7 @@ body::after {
 .upload-area {
     border: 2px dashed rgba(26, 43, 107, 0.25);
     border-radius: 16px;
-    padding: 2.5rem 1.5rem;
+    padding: 1.5rem 1.5rem;
     text-align: center;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -172,18 +172,18 @@ body::after {
 }
 
 .upload-area i {
-    font-size: 2.8rem;
+    font-size: 2rem;
     background: var(--gradient-1);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    margin-bottom: 0.8rem;
+    margin-bottom: 0.5rem;
     display: block;
 }
 
 .upload-area h3 {
-    font-size: 1.05rem;
-    margin-bottom: 0.3rem;
+    font-size: 0.95rem;
+    margin-bottom: 0.2rem;
     color: var(--text-primary);
     font-weight: 600;
 }
