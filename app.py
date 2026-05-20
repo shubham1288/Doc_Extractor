@@ -60,10 +60,31 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def deskew(image):
+    """Deskew a binary image to straighten tilted text."""
+    coords = np.column_stack(np.where(image > 0))
+    if len(coords) < 10:
+        return image
+    angle = cv2.minAreaRect(coords)[-1]
+    if angle < -45:
+        angle = -(90 + angle)
+    else:
+        angle = -angle
+    # Only deskew if angle is significant but not too extreme
+    if abs(angle) < 0.5 or abs(angle) > 15:
+        return image
+    (h, w) = image.shape[:2]
+    center = (w // 2, h // 2)
+    M = cv2.getRotationMatrix2D(center, angle, 1.0)
+    return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC,
+                          borderMode=cv2.BORDER_REPLICATE)
+
+
 def preprocess_image(image_path, lang='eng+hin+tel'):
     """
-    Preprocess the image using OpenCV to improve OCR accuracy.
-    Uses multiple preprocessing strategies and returns the best result.
+    Advanced image preprocessing pipeline for OCR accuracy.
+    Stages: Upscale → Denoise → Grayscale → Sharpen → Adaptive Threshold → Deskew
+    Tries multiple strategies and picks the best result.
     """
     # Read the image
     image = cv2.imread(image_path)
@@ -71,112 +92,83 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
     if image is None:
         raise ValueError("Could not read the image file.")
 
-    # Resize if image is too small (improves OCR on low-res images)
+    # ===== Stage 1: Upscaling (critical for low-res images) =====
     height, width = image.shape[:2]
-    if width < 1500:
-        scale = 1500 / width
+    # Upscale to ensure minimum effective 300 DPI
+    if width < 2000:
+        scale = max(2.0, 2000 / width)
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # ===== Stage 2: Denoising (preserve edges while removing noise) =====
+    denoised = cv2.fastNlMeansDenoisingColored(image, None, 10, 10, 7, 21)
 
-    # Strategy 1: Simple thresholding with Otsu's method
-    _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    # ===== Stage 3: Grayscale + Sharpening (unsharp mask for blurry text) =====
+    gray = cv2.cvtColor(denoised, cv2.COLOR_BGR2GRAY)
+    gaussian = cv2.GaussianBlur(gray, (0, 0), 3)
+    sharp = cv2.addWeighted(gray, 1.5, gaussian, -0.5, 0)
 
-    # Strategy 2: Light denoise + sharpen
-    denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-    sharpening_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-    sharpened = cv2.filter2D(denoised, -1, sharpening_kernel)
-
-    # Strategy 3: Adaptive threshold
-    adaptive = cv2.adaptiveThreshold(
-        gray, 255,
+    # ===== Stage 4: Adaptive Thresholding (handles uneven lighting) =====
+    binary = cv2.adaptiveThreshold(
+        sharp, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        31, 10
+        cv2.THRESH_BINARY, 31, 2
     )
 
-    # Strategy 4: CLAHE enhanced contrast
+    # ===== Stage 5: Deskewing (straighten tilted text) =====
+    binary = deskew(binary)
+
+    # Also prepare alternative strategies
+    # Strategy B: CLAHE + Otsu (good for faded text)
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
+    _, otsu = cv2.threshold(enhanced, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # First pass: try with English only to detect what's there
-    # Then do a full pass with appropriate languages
+    # Strategy C: Just sharpened grayscale (sometimes works best)
+    sharp_only = sharp
+
+    # ===== Stage 6: OCR with tuned config =====
     strategies = {
-        'sharpened': sharpened,
-        'otsu': otsu,
-        'enhanced': enhanced,
+        'binary': binary,
+        'otsu_enhanced': otsu,
+        'sharp': sharp_only,
         'gray': gray,
     }
 
     best_text = ""
 
-    # First try English-only to get a baseline and detect script
+    # Determine language combinations to try
+    lang_combos = ['eng+hin', 'eng+tel', 'eng']
+    if 'hin' in lang and 'tel' in lang:
+        lang_combos = ['eng+hin', 'eng+tel', 'eng']
+    elif 'hin' in lang:
+        lang_combos = ['eng+hin', 'eng']
+    elif 'tel' in lang:
+        lang_combos = ['eng+tel', 'eng']
+    else:
+        lang_combos = [lang]
+
     for name, processed in strategies.items():
         temp_path = image_path.replace('.', f'_prep_{name}.', 1)
         cv2.imwrite(temp_path, processed)
 
-        text = pytesseract.image_to_string(
-            temp_path,
-            lang='eng',
-            config='--oem 3 --psm 3'
-        )
-        readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
-        if readable_chars > len(best_text):
-            best_text = text
+        for try_lang in lang_combos:
+            # PSM 6 = uniform block, PSM 3 = fully automatic
+            for psm in ['6', '3']:
+                try:
+                    text = pytesseract.image_to_string(
+                        temp_path,
+                        lang=try_lang,
+                        config=f'--oem 3 --psm {psm}'
+                    )
+                    readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
+                    if readable_chars > len(best_text):
+                        best_text = text
+                except Exception:
+                    continue
 
+        # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-    # Now try with the requested languages for better multilingual extraction
-    # Determine which languages to actually use based on what we need
-    # Only use Hindi if document likely has Hindi, same for Telugu
-    actual_lang = lang
-    # If using all 3, do a smarter selection
-    if '+' in lang and len(lang.split('+')) > 2:
-        # Try eng+hin first (most common for Indian docs)
-        for name, processed in strategies.items():
-            temp_path = image_path.replace('.', f'_prep2_{name}.', 1)
-            cv2.imwrite(temp_path, processed)
-
-            text = pytesseract.image_to_string(
-                temp_path,
-                lang='eng+hin',
-                config='--oem 3 --psm 3'
-            )
-            readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
-            if readable_chars > len(best_text):
-                best_text = text
-
-            # Also try eng+tel
-            text2 = pytesseract.image_to_string(
-                temp_path,
-                lang='eng+tel',
-                config='--oem 3 --psm 3'
-            )
-            readable_chars2 = sum(1 for c in text2 if c.isalnum() or c.isspace())
-            if readable_chars2 > len(best_text):
-                best_text = text2
-
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-    else:
-        # Use the specified language combination
-        for name, processed in strategies.items():
-            temp_path = image_path.replace('.', f'_prep2_{name}.', 1)
-            cv2.imwrite(temp_path, processed)
-
-            text = pytesseract.image_to_string(
-                temp_path,
-                lang=actual_lang,
-                config='--oem 3 --psm 3'
-            )
-            readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
-            if readable_chars > len(best_text):
-                best_text = text
-
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
 
     return best_text.strip() if best_text else ""
 
