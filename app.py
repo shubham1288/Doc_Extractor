@@ -80,15 +80,15 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
     # Convert to grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-    # Strategy 1: Simple thresholding with Otsu's method (works well for clean docs)
+    # Strategy 1: Simple thresholding with Otsu's method
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Strategy 2: Light denoise + sharpen (best for Aadhaar/PAN cards)
+    # Strategy 2: Light denoise + sharpen
     denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
     sharpening_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
     sharpened = cv2.filter2D(denoised, -1, sharpening_kernel)
 
-    # Strategy 3: Adaptive threshold with larger block size (for uneven lighting)
+    # Strategy 3: Adaptive threshold
     adaptive = cv2.adaptiveThreshold(
         gray, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -96,40 +96,87 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
         31, 10
     )
 
-    # Strategy 4: CLAHE enhanced contrast (for low quality/complex background images)
+    # Strategy 4: CLAHE enhanced contrast
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     enhanced = clahe.apply(gray)
 
-    # Try all strategies and pick the one with most text
+    # First pass: try with English only to detect what's there
+    # Then do a full pass with appropriate languages
     strategies = {
         'sharpened': sharpened,
         'otsu': otsu,
-        'adaptive': adaptive,
-        'gray': gray,
         'enhanced': enhanced,
+        'gray': gray,
     }
 
     best_text = ""
-    best_path = None
 
+    # First try English-only to get a baseline and detect script
     for name, processed in strategies.items():
         temp_path = image_path.replace('.', f'_prep_{name}.', 1)
         cv2.imwrite(temp_path, processed)
 
-        # Try multiple PSM modes for better coverage
-        for psm in ['6', '3', '4']:
+        text = pytesseract.image_to_string(
+            temp_path,
+            lang='eng',
+            config='--oem 3 --psm 3'
+        )
+        readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
+        if readable_chars > len(best_text):
+            best_text = text
+
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
+    # Now try with the requested languages for better multilingual extraction
+    # Determine which languages to actually use based on what we need
+    # Only use Hindi if document likely has Hindi, same for Telugu
+    actual_lang = lang
+    # If using all 3, do a smarter selection
+    if '+' in lang and len(lang.split('+')) > 2:
+        # Try eng+hin first (most common for Indian docs)
+        for name, processed in strategies.items():
+            temp_path = image_path.replace('.', f'_prep2_{name}.', 1)
+            cv2.imwrite(temp_path, processed)
+
             text = pytesseract.image_to_string(
                 temp_path,
-                lang=lang,
-                config=f'--oem 3 --psm {psm}'
+                lang='eng+hin',
+                config='--oem 3 --psm 3'
             )
             readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
             if readable_chars > len(best_text):
                 best_text = text
 
-        # Clean up temp file
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+            # Also try eng+tel
+            text2 = pytesseract.image_to_string(
+                temp_path,
+                lang='eng+tel',
+                config='--oem 3 --psm 3'
+            )
+            readable_chars2 = sum(1 for c in text2 if c.isalnum() or c.isspace())
+            if readable_chars2 > len(best_text):
+                best_text = text2
+
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+    else:
+        # Use the specified language combination
+        for name, processed in strategies.items():
+            temp_path = image_path.replace('.', f'_prep2_{name}.', 1)
+            cv2.imwrite(temp_path, processed)
+
+            text = pytesseract.image_to_string(
+                temp_path,
+                lang=actual_lang,
+                config='--oem 3 --psm 3'
+            )
+            readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
+            if readable_chars > len(best_text):
+                best_text = text
+
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     return best_text.strip() if best_text else ""
 
