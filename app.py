@@ -541,9 +541,19 @@ def extract_fields_by_language(text):
         # Override Name with Hindi
         hindi_name_lines = [l.strip() for l in hindi_text.split('\n')
                            if len(l.strip()) > 3
-                           and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O|नामांकन|आधार|भारतीय)', l)]
-        if hindi_name_lines:
-            hindi_fields['Name'] = hindi_name_lines[0]
+                           and re.search(r'[\u0900-\u097F]{3,}', l)
+                           and not re.search(r'(जन्म|तिथि|पता|पुरुष|महिला|S/O|D/O|W/O|नामांकन|आधार|भारतीय|सरकार|विशिष्ट|पहचान|प्राधिकरण|मेरा|आपका|क्रमांक)', l)]
+        # Filter out lines with too many non-Hindi chars or numbers
+        hindi_name_candidates = []
+        for line in hindi_name_lines:
+            hindi_chars = len(re.findall(r'[\u0900-\u097F]', line))
+            total_chars = len(line.strip())
+            # Name should be mostly Hindi characters, short, no numbers
+            if hindi_chars > 3 and total_chars < 30 and not re.search(r'\d{3,}', line):
+                hindi_name_candidates.append(line)
+
+        if hindi_name_candidates:
+            hindi_fields['Name'] = hindi_name_candidates[0]
 
         # Override Father's name with Hindi
         father_match = re.search(r'(?:S/O|D/O|W/O)\s*[:\-]?\s*([\u0900-\u097F\s\u0901-\u0903]+)', hindi_text)
@@ -561,19 +571,19 @@ def extract_fields_by_language(text):
             hindi_fields['Gender'] = 'महिला'
 
         # Override Address with Hindi address
-        # Look for "पता:" pattern
-        addr_match = re.search(r'पता\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|आधार|$)', hindi_text, re.DOTALL)
+        # Look for "पता:" or "पता :" pattern
+        addr_match = re.search(r'पता\s*[:\-]?\s*(.+?)(?:\d{4}\s\d{4}\s\d{4}|आधार|जन्म|पुरुष|महिला|$)', hindi_text, re.DOTALL)
         if addr_match:
-            addr = re.sub(r'\s+', ' ', addr_match.group(1).strip())
-            addr = re.sub(r'\d{4}\s\d{4}\s\d{4}.*', '', addr).strip()
+            addr = addr_match.group(1).strip()
+            # Clean: remove lines that are clearly not address
+            addr_lines = [l.strip() for l in addr.split('\n') if l.strip() and not re.search(r'(DOB|MALE|FEMALE|VID|Aadhaar)', l)]
+            addr = ' '.join(addr_lines)
+            addr = re.sub(r'\s+', ' ', addr).strip()
+            # Remove trailing junk after PIN code
+            pin_end = re.search(r'(\d{6})', addr)
+            if pin_end:
+                addr = addr[:pin_end.end()]
             if len(addr) > 5:
-                hindi_fields['Address'] = addr
-
-        # If no "पता:" found, look for S/O pattern in Hindi lines
-        if 'Address' not in hindi_fields or not re.search(r'[\u0900-\u097F]', hindi_fields.get('Address', '')):
-            so_addr_match = re.search(r'S/O\s*[:\-]?\s*([\u0900-\u097F][^\n]*(?:\n[^\n]*)*?[\d]{6})', hindi_text, re.DOTALL)
-            if so_addr_match:
-                addr = re.sub(r'\s+', ' ', so_addr_match.group(0).strip())
                 hindi_fields['Address'] = addr
 
         # Override Document Type in Hindi
