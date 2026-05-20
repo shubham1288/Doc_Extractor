@@ -73,8 +73,8 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
 
     # Resize if image is too small (improves OCR on low-res images)
     height, width = image.shape[:2]
-    if width < 1000:
-        scale = 1000 / width
+    if width < 1500:
+        scale = 1500 / width
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
     # Convert to grayscale
@@ -96,12 +96,17 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
         31, 10
     )
 
+    # Strategy 4: CLAHE enhanced contrast (for low quality/complex background images)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+
     # Try all strategies and pick the one with most text
     strategies = {
         'sharpened': sharpened,
         'otsu': otsu,
         'adaptive': adaptive,
-        'gray': gray,  # Sometimes raw grayscale works best
+        'gray': gray,
+        'enhanced': enhanced,
     }
 
     best_text = ""
@@ -111,21 +116,20 @@ def preprocess_image(image_path, lang='eng+hin+tel'):
         temp_path = image_path.replace('.', f'_prep_{name}.', 1)
         cv2.imwrite(temp_path, processed)
 
-        # OCR with optimized config for document cards
-        text = pytesseract.image_to_string(
-            temp_path,
-            lang=lang,
-            config='--oem 3 --psm 6'
-        )
+        # Try multiple PSM modes for better coverage
+        for psm in ['6', '3', '4']:
+            text = pytesseract.image_to_string(
+                temp_path,
+                lang=lang,
+                config=f'--oem 3 --psm {psm}'
+            )
+            readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
+            if readable_chars > len(best_text):
+                best_text = text
 
         # Clean up temp file
         if os.path.exists(temp_path):
             os.remove(temp_path)
-
-        # Pick the result with the most readable characters
-        readable_chars = sum(1 for c in text if c.isalnum() or c.isspace())
-        if readable_chars > len(best_text):
-            best_text = text
 
     return best_text.strip() if best_text else ""
 
