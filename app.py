@@ -11,11 +11,15 @@ from fastapi import FastAPI, File, UploadFile, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from concurrent.futures import ThreadPoolExecutor
 import cv2
 import numpy as np
 import pytesseract
 import uvicorn
 import fitz  # PyMuPDF - for PDF handling
+
+# Thread pool for CPU-heavy OCR work (prevents blocking page loads)
+executor = ThreadPoolExecutor(max_workers=2)
 
 # ============================================================
 # Configuration
@@ -746,8 +750,10 @@ async def upload_file(file: UploadFile = File(...), language: str = Form(default
         with open(filepath, 'wb') as f:
             f.write(contents)
 
-        # Extract text using OCR
-        extracted_text = extract_text(filepath, language)
+        # Extract text using OCR (run in thread pool to not block server)
+        import asyncio
+        loop = asyncio.get_event_loop()
+        extracted_text = await loop.run_in_executor(executor, extract_text, filepath, language)
 
         if not extracted_text:
             return JSONResponse(
@@ -820,4 +826,4 @@ if __name__ == '__main__':
     print("  Document Extractor - OCR Application")
     print(f"  Running at: http://127.0.0.1:{port}")
     print("=" * 50 + "\n")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, workers=1, timeout_keep_alive=120)
