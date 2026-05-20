@@ -285,15 +285,20 @@ def extract_fields(text):
     if gender_match:
         fields['Gender'] = gender_match.group().capitalize()
 
-    # Extract Address
-    address_pattern = r'(?:Address|చిరునామా)\s*[:\-]?\s*(S/O.*?(?:\d{6}))'
-    address_match = re.search(address_pattern, text, re.DOTALL | re.IGNORECASE)
-    if address_match:
-        address = address_match.group(1).strip()
-        # Clean up the address - remove extra whitespace and newlines
-        address = re.sub(r'\s+', ' ', address)
-        if len(address) > 10:
-            fields['Address'] = address
+    # Extract Address (English only - exclude lines with Telugu/Hindi chars)
+    address_patterns = [
+        r'(?:Address)\s*[:\-]?\s*(S/O[^$\u0C00-\u0C7F\u0900-\u097F]*?(?:\d{6}))',
+        r'(?:Address)\s*[:\-]?\s*([A-Za-z0-9][^\u0C00-\u0C7F\u0900-\u097F]*?(?:\d{6}))',
+    ]
+    for pattern in address_patterns:
+        address_match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if address_match:
+            address = address_match.group(1).strip()
+            address = re.sub(r'\s+', ' ', address)
+            # Make sure it doesn't contain Telugu/Hindi
+            if len(address) > 10 and not re.search(r'[\u0C00-\u0C7F\u0900-\u097F]', address):
+                fields['Address'] = address
+                break
 
     # Extract PIN Code (6-digit Indian PIN)
     pin_pattern = r'\b(?:PIN\s*(?:Code)?[:\-]?\s*)?(\d{6})\b'
