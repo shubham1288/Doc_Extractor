@@ -1,0 +1,121 @@
+# Implementation Plan
+
+## Overview
+
+Implementation plan for the KYC Document Extraction System — a stateless OCR-based service for extracting structured data from Indian identity documents (Aadhaar, PAN, Driving License) using PaddleOCR, FastAPI, and OpenCV.
+
+## Tasks
+
+- [x] 1. Project Setup and Configuration
+  - [x] 1.1. Initialize Python project with pyproject.toml (Python 3.11+, all dependencies pinned)
+  - [x] 1.2. Create project directory structure (app/api/, app/core/, app/services/, app/ocr/, app/extraction/, app/validators/, app/models/, app/schemas/, app/utils/, app/middleware/, tests/, static/, templates/)
+  - [x] 1.3. Configure FastAPI application entry point with Uvicorn settings
+  - [x] 1.4. Set up structured logging with structlog (JSON format)
+  - [x] 1.5. Create Pydantic v2 settings configuration (environment variables, defaults)
+  - [x] 1.6. Set up pytest configuration with pytest-asyncio and hypothesis
+- [x] 2. Security Validator Implementation
+  - [x] 2.1. Implement SecurityConfig dataclass with file size, extension, and MIME type constraints
+  - [x] 2.2. Implement magic bytes detection for JPEG, PNG, TIFF, WEBP, and PDF
+  - [x] 2.3. Implement file size validation (10MB limit)
+  - [x] 2.4. Implement MIME type validation against magic bytes (ignore declared content type)
+  - [x] 2.5. Implement filename sanitization (strip path traversal, null bytes, special characters)
+  - [x] 2.6. Implement PDF bomb detection (page count, decompression ratio, nested object depth)
+  - [x] 2.7. Implement validate_upload() orchestration method returning ValidatedFile
+  - [x] 2.8. Write property tests for file size enforcement (Property 1)
+  - [x] 2.9. Write property tests for magic bytes override (Property 2)
+  - [x] 2.10. Write property tests for extension/MIME rejection (Property 3)
+  - [x] 2.11. Write property tests for filename sanitization (Property 4)
+- [x] 3. Image Preprocessor Implementation
+  - [x] 3.1. Implement grayscale conversion (BGR to single-channel)
+  - [x] 3.2. Implement resolution normalization to 300 DPI
+  - [x] 3.3. Implement auto-rotation detection and correction (0/90/180/270 degrees)
+  - [x] 3.4. Implement deskew using Hough transform (threshold > 0.5 degrees)
+  - [x] 3.5. Implement bilateral filter denoising (triggered by Laplacian variance < 100)
+  - [x] 3.6. Implement CLAHE contrast enhancement
+  - [x] 3.7. Implement adaptive thresholding (triggered by std < 40)
+  - [x] 3.8. Implement blur detection (Laplacian variance score)
+  - [x] 3.9. Implement full preprocess() pipeline orchestrating all steps
+  - [x] 3.10. Write property tests for preprocessing immutability (Property 5)
+  - [x] 3.11. Write property tests for grayscale conversion (Property 6)
+  - [x] 3.12. Write property tests for preprocessing idempotence (Property 7)
+- [x] 4. OCR Engine Implementation
+  - [x] 4.1. Implement thread-safe singleton pattern for OCR engine with threading.Lock
+  - [x] 4.2. Implement PaddleOCR initialization (CPU-optimized, MKL-DNN enabled)
+  - [x] 4.3. Implement extract_text() method returning OCRResult dataclass
+  - [x] 4.4. Implement batch processing (extract_batch) for multiple images
+  - [x] 4.5. Implement multi-language support configuration (English + 9 Indian languages)
+  - [x] 4.6. Implement is_ready property for health/readiness checks
+  - [x] 4.7. Write property tests for singleton identity (Property 8)
+  - [x] 4.8. Write property tests for confidence aggregation consistency (Property 9)
+  - [x] 4.9. Write property tests for batch result count (Property 10)
+- [x] 5. Document Classifier Implementation
+  - [x] 5.1. Implement text normalization for classification input
+  - [x] 5.2. Implement Aadhaar front scoring (UIDAI, number pattern, gender, DOB keywords)
+  - [x] 5.3. Implement Aadhaar back scoring (address, pincode, UIDAI keywords)
+  - [x] 5.4. Implement PAN scoring (PAN number pattern, Income Tax, father name keywords)
+  - [x] 5.5. Implement Driving License scoring (DL keyword, transport, validity, vehicle class)
+  - [x] 5.6. Implement classify() method with threshold logic (< 0.5 returns UNKNOWN)
+  - [x] 5.7. Write property tests for confidence bounds and threshold (Property 11)
+- [x] 6. Field Extraction Engines
+  - [x] 6.1. Implement BaseExtractor abstract class with fuzzy_match and normalize_name helpers
+  - [x] 6.2. Implement AadhaarExtractor (aadhaar_number, name, dob, gender, address, pincode, state)
+  - [x] 6.3. Implement Aadhaar number extraction with masked/unmasked format support
+  - [x] 6.4. Implement Verhoeff checksum validation algorithm
+  - [x] 6.5. Implement PANExtractor (pan_number, name, father_name, dob)
+  - [x] 6.6. Implement DrivingLicenseExtractor (license_number, name, dob, issue/expiry dates, address, authority)
+  - [x] 6.7. Implement extraction router (map DocumentType to appropriate extractor)
+  - [x] 6.8. Write property tests for Verhoeff checksum correctness (Property 12)
+  - [x] 6.9. Write property tests for PAN format validation (Property 13)
+  - [x] 6.10. Write property tests for extraction confidence bounds (Property 14)
+- [x] 7. Field Validators
+  - [x] 7.1. Implement ValidationResult dataclass (is_valid, normalized_value, error_message)
+  - [x] 7.2. Implement date normalization (multiple input formats to DD/MM/YYYY)
+  - [x] 7.3. Implement pincode validation (6 digits, first digit 1-9)
+  - [x] 7.4. Implement Driving License number format validation (state-code + number)
+  - [x] 7.5. Implement validate_all() orchestrator for document-type-specific validation
+  - [x] 7.6. Write property tests for date normalization round-trip (Property 15)
+  - [x] 7.7. Write property tests for pincode validation (Property 16)
+- [x] 8. REST API and Pipeline Integration
+  - [x] 8.1. Implement KYCExtractionResponse and ErrorResponse Pydantic models
+  - [x] 8.2. Implement request_id generation (unique per request)
+  - [x] 8.3. Implement POST /api/v1/kyc/extract endpoint with multipart/form-data handling
+  - [x] 8.4. Implement GET /health endpoint (system health + OCR readiness)
+  - [x] 8.5. Implement GET /ready endpoint (OCR model + memory checks)
+  - [x] 8.6. Implement global exception handler (no PII in error responses, cleanup)
+  - [x] 8.7. Implement CORS middleware configuration
+  - [x] 8.8. Wire up the full extraction pipeline in the endpoint handler
+  - [x] 8.9. Write property tests for API response structural completeness (Property 17)
+  - [x] 8.10. Write property tests for request ID uniqueness (Property 18)
+- [x] 9. PDF Processing
+  - [x] 9.1. Implement PDF to image conversion using pdf2image (300 DPI)
+  - [x] 9.2. Implement page limit enforcement (max 10 pages)
+  - [x] 9.3. Implement multi-page OCR result merging (deduplication + confidence aggregation)
+  - [x] 9.4. Write property tests for PDF page limit enforcement (Property 19)
+- [x] 10. Logging and PII Protection
+  - [x] 10.1. Implement PII filter (redact Aadhaar patterns, PAN patterns from log entries)
+  - [x] 10.2. Implement request logging middleware (request_id, timing, doc_type, confidence)
+  - [x] 10.3. Write property tests for no PII in logs (Property 20)
+- [x] 11. Error Handling and Recovery
+  - [x] 11.1. Implement OCR not ready handler (HTTP 503, OCR_NOT_READY)
+  - [x] 11.2. Implement low confidence handling (OCR < 0.3 → UNKNOWN response)
+  - [x] 11.3. Implement memory cleanup in finally blocks (file bytes, intermediate images)
+  - [x] 11.4. Write property tests for low OCR confidence threshold (Property 21)
+- [x] 12. Frontend Interface
+  - [x] 12.1. Create HTML page with file upload form (drag-and-drop + file picker)
+  - [x] 12.2. Implement JavaScript fetch to POST /api/v1/kyc/extract
+  - [x] 12.3. Implement processing status indicator (spinner/progress)
+  - [x] 12.4. Implement JSON result viewer with syntax highlighting
+  - [x] 12.5. Implement error display for failed extractions
+  - [x] 12.6. Add CSS styling for clean, minimal interface
+- [x] 13. Docker and Production Deployment
+  - [x] 13.1. Create multi-stage Dockerfile (build + runtime, Python 3.12, poppler-utils)
+  - [x] 13.2. Create .dockerignore file
+  - [x] 13.3. Configure Gunicorn with Uvicorn workers for production
+  - [x] 13.4. Add health check configuration to Dockerfile
+  - [x] 13.5. Create docker-compose.yml for local development
+- [x] 14. Integration and End-to-End Tests
+  - [x] 14.1. Write end-to-end API tests with synthetic document images
+  - [x] 14.2. Write tests for concurrent request handling (thread safety)
+  - [x] 14.3. Write tests for health and readiness endpoints
+  - [x] 14.4. Write tests for error response structure consistency
+  - [x] 14.5. Verify memory cleanup after request processing

@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  kyc-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kyc-extraction-api
+    ports:
+      - "8000:8000"
+    environment:
+      - KYC_HOST=0.0.0.0
+      - KYC_PORT=8000
+      - GUNICORN_WORKERS=2
+      - GUNICORN_TIMEOUT=120
+      - GUNICORN_LOG_LEVEL=info
+      - PADDLEOCR_USE_GPU=false
+    volumes:
+      # Mount source for development (optional - comment out for production-like testing)
+      - ./app:/app/app:ro
+      - ./static:/app/static:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G

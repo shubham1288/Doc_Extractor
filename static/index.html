@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYC Document Extraction</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif;
+            background-color: #f8f9fa;
+            color: #212529;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 0.5rem;
+            font-size: 1.75rem;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #6c757d;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            border: 2px dashed #ced4da;
+            border-radius: 12px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background-color 0.2s;
+            background-color: #fff;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: #4361ee;
+            background-color: #f0f4ff;
+        }
+
+        .drop-zone-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .drop-zone-text {
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+
+        .drop-zone-hint {
+            font-size: 0.8rem;
+            color: #adb5bd;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        /* File Info */
+        .file-info {
+            display: none;
+            align-items: center;
+            justify-content: space-between;
+            background: #fff;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-top: 1rem;
+        }
+
+        .file-info.visible {
+            display: flex;
+        }
+
+        .file-name {
+            font-size: 0.9rem;
+            color: #343a40;
+            font-weight: 500;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 70%;
+        }
+
+        .file-size {
+            font-size: 0.8rem;
+            color: #6c757d;
+        }
+
+        .btn-clear {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        .btn-clear:hover {
+            color: #dc3545;
+        }
+
+        /* Upload Button */
+        .btn-upload {
+            display: none;
+            width: 100%;
+            padding: 0.85rem;
+            margin-top: 1rem;
+            background-color: #4361ee;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .btn-upload.visible {
+            display: block;
+        }
+
+        .btn-upload:hover:not(:disabled) {
+            background-color: #3a56d4;
+        }
+
+        .btn-upload:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Spinner */
+        .spinner-overlay {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .spinner-overlay.visible {
+            display: flex;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e9ecef;
+            border-top-color: #4361ee;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner-text {
+            margin-top: 0.75rem;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        /* Result Viewer */
+        .result-section {
+            display: none;
+            margin-top: 2rem;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+        }
+
+        .result-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #1a1a2e;
+        }
+
+        .result-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 12px;
+            background-color: #d4edda;
+            color: #155724;
+            font-weight: 500;
+        }
+
+        .json-viewer {
+            background-color: #1e1e2e;
+            border-radius: 8px;
+            padding: 1.25rem;
+            overflow-x: auto;
+            font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+            font-size: 0.82rem;
+            line-height: 1.7;
+        }
+
+        .json-viewer pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        /* JSON Syntax Highlighting */
+        .json-key { color: #89b4fa; }
+        .json-string { color: #a6e3a1; }
+        .json-number { color: #fab387; }
+        .json-boolean { color: #cba6f7; }
+        .json-null { color: #f38ba8; }
+        .json-brace { color: #cdd6f4; }
+
+        /* Error Display */
+        .error-section {
+            display: none;
+            margin-top: 2rem;
+            background-color: #fff5f5;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+
+        .error-section.visible {
+            display: block;
+        }
+
+        .error-title {
+            color: #dc2626;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .error-message {
+            color: #7f1d1d;
+            font-size: 0.88rem;
+        }
+
+        .error-details {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #fecaca;
+            font-size: 0.8rem;
+            color: #991b1b;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>KYC Document Extraction</h1>
+        <p class="subtitle">Upload an Indian identity document to extract structured KYC data</p>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="dropZone">
+            <div class="drop-zone-icon">📄</div>
+            <p class="drop-zone-text">Drag and drop your document here</p>
+            <p class="drop-zone-hint">or click to browse — JPG, PNG, TIFF, WEBP, PDF accepted</p>
+            <input
+                type="file"
+                class="file-input"
+                id="fileInput"
+                accept=".jpg,.jpeg,.png,.tiff,.webp,.pdf"
+            >
+        </div>
+
+        <!-- File Info -->
+        <div class="file-info" id="fileInfo">
+            <div>
+                <span class="file-name" id="fileName"></span>
+                <span class="file-size" id="fileSize"></span>
+            </div>
+            <button class="btn-clear" id="btnClear" title="Remove file" aria-label="Remove selected file">&times;</button>
+        </div>
+
+        <!-- Upload Button -->
+        <button class="btn-upload" id="btnUpload">Extract Document</button>
+
+        <!-- Spinner -->
+        <div class="spinner-overlay" id="spinner">
+            <div class="spinner"></div>
+            <p class="spinner-text">Processing document...</p>
+        </div>
+
+        <!-- Result -->
+        <div class="result-section" id="resultSection">
+            <div class="result-header">
+                <span class="result-title">Extraction Result</span>
+                <span class="result-badge" id="resultBadge"></span>
+            </div>
+            <div class="json-viewer">
+                <pre id="jsonOutput"></pre>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div class="error-section" id="errorSection">
+            <div class="error-title">⚠ Extraction Failed</div>
+            <p class="error-message" id="errorMessage"></p>
+            <div class="error-details" id="errorDetails"></div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            const fileInfo = document.getElementById('fileInfo');
+            const fileName = document.getElementById('fileName');
+            const fileSize = document.getElementById('fileSize');
+            const btnClear = document.getElementById('btnClear');
+            const btnUpload = document.getElementById('btnUpload');
+            const spinner = document.getElementById('spinner');
+            const resultSection = document.getElementById('resultSection');
+            const resultBadge = document.getElementById('resultBadge');
+            const jsonOutput = document.getElementById('jsonOutput');
+            const errorSection = document.getElementById('errorSection');
+            const errorMessage = document.getElementById('errorMessage');
+            const errorDetails = document.getElementById('errorDetails');
+
+            let selectedFile = null;
+
+            // --- Drop Zone Events ---
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('drag-over');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('drag-over');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('drag-over');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFile(files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    handleFile(fileInput.files[0]);
+                }
+            });
+
+            btnClear.addEventListener('click', clearFile);
+            btnUpload.addEventListener('click', uploadFile);
+
+            // --- File Handling ---
+            function handleFile(file) {
+                selectedFile = file;
+                fileName.textContent = file.name;
+                fileSize.textContent = ' (' + formatSize(file.size) + ')';
+                fileInfo.classList.add('visible');
+                btnUpload.classList.add('visible');
+                hideResults();
+            }
+
+            function clearFile() {
+                selectedFile = null;
+                fileInput.value = '';
+                fileInfo.classList.remove('visible');
+                btnUpload.classList.remove('visible');
+                hideResults();
+            }
+
+            function formatSize(bytes) {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / 1048576).toFixed(1) + ' MB';
+            }
+
+            // --- Upload ---
+            async function uploadFile() {
+                if (!selectedFile) return;
+
+                showSpinner();
+                hideResults();
+                btnUpload.disabled = true;
+
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+
+                try {
+                    const response = await fetch('/api/v1/kyc/extract', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showResult(data);
+                    } else {
+                        showError(data);
+                    }
+                } catch (err) {
+                    showError({
+                        error_code: 'NETWORK_ERROR',
+                        error_message: 'Unable to reach the server. Please check your connection and try again.',
+                        details: { original_error: err.message },
+                    });
+                } finally {
+                    hideSpinner();
+                    btnUpload.disabled = false;
+                }
+            }
+
+            // --- UI State ---
+            function showSpinner() {
+                spinner.classList.add('visible');
+            }
+
+            function hideSpinner() {
+                spinner.classList.remove('visible');
+            }
+
+            function hideResults() {
+                resultSection.classList.remove('visible');
+                errorSection.classList.remove('visible');
+            }
+
+            function showResult(data) {
+                const docType = data.document_type || 'unknown';
+                resultBadge.textContent = docType.replace(/_/g, ' ');
+                jsonOutput.innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
+                resultSection.classList.add('visible');
+            }
+
+            function showError(data) {
+                const msg = data.error_message || data.detail || 'An unknown error occurred.';
+                errorMessage.textContent = msg;
+
+                if (data.details) {
+                    errorDetails.textContent = JSON.stringify(data.details, null, 2);
+                    errorDetails.style.display = 'block';
+                } else {
+                    errorDetails.textContent = '';
+                    errorDetails.style.display = 'none';
+                }
+
+                errorSection.classList.add('visible');
+            }
+
+            // --- JSON Syntax Highlighting ---
+            function syntaxHighlight(json) {
+                json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return json.replace(
+                    /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|\bnull\b|[{}\[\],])/g,
+                    function (match) {
+                        let cls = 'json-number';
+                        if (/^"/.test(match)) {
+                            if (/:$/.test(match)) {
+                                cls = 'json-key';
+                            } else {
+                                cls = 'json-string';
+                            }
+                        } else if (/true|false/.test(match)) {
+                            cls = 'json-boolean';
+                        } else if (/null/.test(match)) {
+                            cls = 'json-null';
+                        } else if (/[{}\[\],]/.test(match)) {
+                            cls = 'json-brace';
+                        }
+                        return '<span class="' + cls + '">' + match + '</span>';
+                    }
+                );
+            }
+        })();
+    </script>
+</body>
+</html>
