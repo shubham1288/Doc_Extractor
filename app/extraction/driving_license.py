@@ -41,6 +41,8 @@ class DrivingLicenseExtractor(BaseExtractor):
         Extracts: license_number, name, dob, issue_date, expiry_date,
                   address, issuing_authority.
 
+        Includes sanity check: if issue_date > expiry_date, swaps them.
+
         Args:
             ocr_result: OCR output containing text and confidence scores.
 
@@ -59,6 +61,23 @@ class DrivingLicenseExtractor(BaseExtractor):
             "address": self._extract_address(text, base_confidence),
             "issuing_authority": self._extract_issuing_authority(text, base_confidence),
         }
+
+        # Sanity check: expiry date must be after issue date
+        # If they're swapped, fix it
+        issue = fields.get("issue_date")
+        expiry = fields.get("expiry_date")
+        if issue and expiry and issue.value and expiry.value:
+            try:
+                issue_parts = re.split(r"[/\-\.]", issue.value)
+                expiry_parts = re.split(r"[/\-\.]", expiry.value)
+                # Parse as DD/MM/YYYY
+                issue_year = int(issue_parts[2])
+                expiry_year = int(expiry_parts[2])
+                if issue_year > expiry_year:
+                    # Swap them
+                    fields["issue_date"], fields["expiry_date"] = fields["expiry_date"], fields["issue_date"]
+            except (ValueError, IndexError):
+                pass
 
         return fields
 
@@ -105,6 +124,10 @@ class DrivingLicenseExtractor(BaseExtractor):
     def _extract_name(self, text: str, base_confidence: float) -> ExtractionField:
         """Extract name from Driving License OCR text.
 
+        Indian DL layout typically has:
+        - Name/Holder's Name label followed by the name
+        - Or S/O, D/O, W/O pattern (father/spouse name indicates next/prev line is holder name)
+
         Args:
             text: OCR text to search.
             base_confidence: Base confidence from OCR.
@@ -112,26 +135,85 @@ class DrivingLicenseExtractor(BaseExtractor):
         Returns:
             ExtractionField with the extracted name.
         """
-        lines = text.split("\n")
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
 
+        # Strategy 1: Look for explicit name labels
         name_keywords = [
-            r"name\s*[:\-]?\s*",
-            r"holder'?s?\s*name\s*[:\-]?\s*",
-            r"नाम\s*[:\-]?\s*",
+            r"(?:holder'?s?\s*)?name\s*[:\-]\s*(.+)",
+            r"नाम\s*[:\-]\s*(.+)",
         ]
 
-        for i, line in enumerate(lines):
+        for line in lines:
             for keyword in name_keywords:
                 match = re.search(keyword, line, re.IGNORECASE)
                 if match:
-                    name = line[match.end():].strip()
-                    if name and len(name) > 1:
+                    name = match.group(1).strip()
+                    if name and len(name) > 2 and not re.search(r"\d{3,}", name):
                         normalized = self._normalize_name(name)
-                        return ExtractionField(
-                            value=normalized,
-                            confidence=base_confidence * 0.85,
-                            raw_text=name,
-                        )
+                        if len(normalized) > 2:
+                            return ExtractionField(
+                                value=normalized,
+                                confidence=base_confidence * 0.85,
+                                raw_text=name,
+                            )
+                    # Check next line if label ends the line
+                    idx = lines.index(line) if line in lines else -1
+                    if idx >= 0 and idx + 1 < len(lines):
+                        next_line = lines[idx + 1]
+                        if next_line and len(next_line) > 2 and not re.search(r"\d{3,}", next_line):
+                            normalized = self._normalize_name(next_line)
+                            if len(normalized) > 2:
+                                return ExtractionField(
+                                    value=normalized,
+                                    confidence=base_confidence * 0.8,
+                                    raw_text=next_line,
+                                )
+
+        # Strategy 2: Find S/O or D/O pattern — the name is typically BEFORE it
+        for i, line in enumerate(lines):
+            if re.search(r"\b[SDWC]/[Oo]\b|(?:S/O|D/O|W/O|C/O|Son of|Daughter of)", line, re.IGNORECASE):
+                # The holder's name is usually on the line before S/O
+                if i > 0:
+                    candidate = lines[i - 1]
+                    english_chars = sum(1 for c in candidate if c.isascii() and c.isalpha())
+                    total = sum(1 for c in candidate if not c.isspace())
+                    if total > 2 and english_chars / max(total, 1) > 0.6:
+                        if not re.search(r"\d{3,}", candidate):
+                            normalized = self._normalize_name(candidate)
+                            if len(normalized) > 2:
+                                return ExtractionField(
+                                    value=normalized,
+                                    confidence=base_confidence * 0.7,
+                                    raw_text=candidate,
+                                )
+
+        # Strategy 3: Heuristic — look for English uppercase name-like lines
+        excluded = [
+            "driving", "licence", "license", "transport", "rto", "authority",
+            "government", "india", "state", "motor", "vehicle", "class",
+            "validity", "expiry", "issue", "address", "blood",
+        ]
+
+        for line in lines:
+            english_upper = sum(1 for c in line if c.isupper() and c.isascii())
+            total_chars = sum(1 for c in line if not c.isspace())
+            if total_chars < 4 or english_upper < 3:
+                continue
+            if english_upper / max(total_chars, 1) < 0.6:
+                continue
+            if any(kw in line.lower() for kw in excluded):
+                continue
+            if re.search(r"\d{3,}", line):
+                continue
+            words = line.split()
+            if len(words) >= 2 and all(len(w) >= 2 for w in words[:2]):
+                normalized = self._normalize_name(line)
+                if len(normalized) > 3:
+                    return ExtractionField(
+                        value=normalized,
+                        confidence=base_confidence * 0.6,
+                        raw_text=line,
+                    )
 
         return ExtractionField(value=None, confidence=0.0, raw_text=None)
 

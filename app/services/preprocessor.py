@@ -262,8 +262,17 @@ class ImagePreprocessor:
         # Step 1: Convert to grayscale
         result = self.to_grayscale(image)
 
-        # Step 2: Normalize resolution to 300 DPI (assume input is 72 DPI)
-        result = self.normalize_resolution(result, current_dpi=72, target_dpi=300)
+        # Step 2: Normalize resolution — only scale up SMALL images
+        # If the image is already large (e.g. phone photo), don't upscale
+        # A typical KYC document at 300 DPI would be ~2500x3500 pixels
+        # Only upscale if the image is small (likely a low-DPI scan)
+        h, w = result.shape[:2]
+        if max(h, w) < 1000:
+            # Small image — likely 72 DPI, upscale to 300 DPI
+            result = self.normalize_resolution(result, current_dpi=72, target_dpi=300)
+        elif max(h, w) > 4000:
+            # Very large image — downscale slightly to avoid slow OCR
+            result = self.normalize_resolution(result, current_dpi=400, target_dpi=300)
 
         # Step 3: Auto-rotate
         result = self.auto_rotate(result)

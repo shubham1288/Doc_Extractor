@@ -80,8 +80,16 @@ class PANExtractor(BaseExtractor):
     def _extract_name(self, text: str, base_confidence: float) -> ExtractionField:
         """Extract cardholder name from PAN card OCR text.
 
-        On PAN cards, the name typically appears after 'Name' label
-        or is the line after the PAN number.
+        PAN card layout (top to bottom):
+        - Header (Income Tax / Govt of India)
+        - PAN number
+        - Name (English, ALL CAPS)
+        - Hindi name (Devanagari)
+        - Father's name label + name
+        - DOB
+
+        Strategy: Find name by position relative to PAN number, or by
+        looking for uppercase English lines that aren't headers.
 
         Args:
             text: OCR text to search.
@@ -90,41 +98,96 @@ class PANExtractor(BaseExtractor):
         Returns:
             ExtractionField with the extracted name.
         """
-        lines = text.split("\n")
+        lines = [l.strip() for l in text.split("\n") if l.strip()]
 
-        # Look for explicit name label
-        name_keywords = [r"name\s*[:\-]?\s*", r"नाम\s*[:\-]?\s*"]
+        # Strategy 1: Look for explicit "Name:" label
         for i, line in enumerate(lines):
-            for keyword in name_keywords:
-                match = re.search(keyword, line, re.IGNORECASE)
-                if match:
-                    name = line[match.end():].strip()
-                    if name and len(name) > 1:
-                        normalized = self._normalize_name(name)
+            match = re.search(r"(?:^|\s)name\s*[:\-]\s*(.+)", line, re.IGNORECASE)
+            if match:
+                name = match.group(1).strip()
+                if name and len(name) > 2 and not re.search(r"\d{3,}", name):
+                    normalized = self._normalize_name(name)
+                    if len(normalized) > 2:
                         return ExtractionField(
                             value=normalized,
-                            confidence=base_confidence * 0.85,
+                            confidence=base_confidence * 0.9,
                             raw_text=name,
                         )
 
-        # Heuristic: look for all-caps name lines (PAN cards use uppercase)
-        for line in lines:
-            stripped = line.strip()
-            if (
-                stripped
-                and len(stripped) > 3
-                and re.match(r"^[A-Z][A-Za-z\s]+$", stripped)
-                and not re.search(r"\d", stripped)
-                and not any(kw in stripped.lower() for kw in [
+        # Strategy 2: Find PAN number line, then look at nearby lines
+        pan_line_idx = -1
+        for i, line in enumerate(lines):
+            if self._PAN_PATTERN.search(line):
+                pan_line_idx = i
+                break
+
+        # On PAN cards, the English name is typically 1-3 lines after PAN number
+        if pan_line_idx >= 0:
+            for offset in range(1, 4):
+                idx = pan_line_idx + offset
+                if idx >= len(lines):
+                    break
+                candidate = lines[idx]
+                # Must be mostly English uppercase and not a keyword
+                english_upper = sum(1 for c in candidate if c.isupper() and c.isascii())
+                total_alpha = sum(1 for c in candidate if c.isalpha())
+                
+                if total_alpha < 3:
+                    continue
+                if english_upper / max(total_alpha, 1) < 0.5:
+                    continue
+                if any(kw in candidate.lower() for kw in [
                     "income", "tax", "india", "permanent", "account",
-                    "govt", "department", "father",
-                ])
-            ):
-                normalized = self._normalize_name(stripped)
+                    "govt", "department", "father", "signature",
+                ]):
+                    continue
+                if re.search(r"\d{3,}", candidate):
+                    continue
+                    
+                normalized = self._normalize_name(candidate)
+                if len(normalized) > 2:
+                    return ExtractionField(
+                        value=normalized,
+                        confidence=base_confidence * 0.75,
+                        raw_text=candidate,
+                    )
+
+        # Strategy 3: Heuristic - look for all-caps English name lines
+        excluded = [
+            "income", "tax", "india", "permanent", "account",
+            "govt", "department", "father", "signature", "date",
+            "birth", "dob",
+        ]
+        
+        candidates = []
+        for i, line in enumerate(lines):
+            # Must have at least some English uppercase letters
+            english_upper = sum(1 for c in line if c.isupper() and c.isascii())
+            total_chars = sum(1 for c in line if not c.isspace())
+            
+            if total_chars < 3 or english_upper < 3:
+                continue
+            if english_upper / max(total_chars, 1) < 0.6:
+                continue
+            if any(kw in line.lower() for kw in excluded):
+                continue
+            if re.search(r"\d{3,}", line):
+                continue
+            
+            # Score: prefer longer names, more uppercase
+            words = line.split()
+            score = english_upper + len(words) * 2
+            candidates.append((score, i, line))
+
+        if candidates:
+            candidates.sort(key=lambda x: -x[0])
+            best = candidates[0][2]
+            normalized = self._normalize_name(best)
+            if len(normalized) > 2:
                 return ExtractionField(
                     value=normalized,
-                    confidence=base_confidence * 0.7,
-                    raw_text=stripped,
+                    confidence=base_confidence * 0.65,
+                    raw_text=best,
                 )
 
         return ExtractionField(value=None, confidence=0.0, raw_text=None)
